@@ -238,6 +238,7 @@ void SmartscopeAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     auto state = apvts.copyState();
     state.setProperty ("editorWidth", editorWidth, nullptr);
     state.setProperty ("editorHeight", editorHeight, nullptr);
+    state.setProperty ("theme", themeIndex.load(), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -252,6 +253,7 @@ void SmartscopeAudioProcessor::setStateInformation (const void* data, int sizeIn
             auto state = juce::ValueTree::fromXml (*xml);
             editorWidth  = (int) state.getProperty ("editorWidth", editorWidth);
             editorHeight = (int) state.getProperty ("editorHeight", editorHeight);
+            themeIndex.store ((int) state.getProperty ("theme", 0));
             apvts.replaceState (state);
         }
     }

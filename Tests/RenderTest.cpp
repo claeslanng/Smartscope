@@ -82,6 +82,49 @@ static void render (SmartscopeAudioProcessor& p, FakePlayHead& ph, double sr, do
     }
 }
 
+// Dense mix: kick on every beat, sustained saw-ish bass ducked by the kick, hats, one overshoot
+static void renderDense (SmartscopeAudioProcessor& p, FakePlayHead& ph, double sr, double seconds)
+{
+    const int block = 512;
+    const double spb = sr * 60.0 / ph.bpm;
+    juce::AudioBuffer<float> buf (2, block);
+    juce::MidiBuffer midi;
+    const long total = (long) (seconds * sr);
+    double kickPhase = 0.0, bassPhase = 0.0;
+    juce::Random rng (42);
+
+    for (long s0 = 0; s0 < total; s0 += block)
+    {
+        const int n = (int) std::min<long> (block, total - s0);
+        buf.setSize (2, n, false, false, true);
+        ph.ppq = (double) s0 / spb;
+        for (int i = 0; i < n; ++i)
+        {
+            const long s = s0 + i;
+            const double tInBeat = std::fmod ((double) s, spb) / sr;
+            const int beat = (int) ((double) s / spb);
+            if (std::fmod ((double) s, spb) < 1.0) kickPhase = 0.0;
+            const double f = 50.0 + 130.0 * std::exp (-tInBeat * 35.0);
+            kickPhase += juce::MathConstants<double>::twoPi * f / sr;
+            const double kick = std::sin (kickPhase) * std::exp (-tInBeat * 7.0);
+
+            const double bassF = (beat % 4 == 2) ? 49.0 : 55.0;
+            bassPhase += juce::MathConstants<double>::twoPi * bassF / sr;
+            double saw = 0.0;
+            for (int h = 1; h <= 6; ++h) saw += std::sin (bassPhase * h) / h;
+            const double duck = 1.0 - 0.95 * std::exp (-tInBeat * 6.0);
+            const double bass = 0.55 * saw * duck;
+
+            const double hat = 0.06 * (rng.nextFloat() * 2.0 - 1.0) * std::exp (-std::fmod (tInBeat, spb / sr / 2.0) * 50.0);
+            double v = 0.85 * kick + bass + hat;
+            if (beat % 4 == 1 && tInBeat > 0.0 && tInBeat < 0.004) v *= 1.25; // a transient that overshoots 0 dBFS
+            buf.setSample (0, i, (float) v);
+            buf.setSample (1, i, (float) v);
+        }
+        p.processBlock (buf, midi);
+    }
+}
+
 static void snapshot (juce::Component& c, const juce::String& name)
 {
     auto img = c.createComponentSnapshot (c.getLocalBounds(), true, 1.0f);
@@ -188,6 +231,24 @@ int main()
     scope.setViewForTest (0.0, 1.0);
     scope.refreshForTest();
     snapshot (*ed, "6_gain12");
+
+    // Dense 1-bar view at roughly the size of the user's window, in each theme
+    if (auto* gp = proc.apvts.getParameter (ParamIDs::gain))
+        gp->setValueNotifyingHost (gp->convertTo0to1 (0.0f));
+    if (auto* lp = proc.apvts.getParameter (ParamIDs::length))
+        lp->setValueNotifyingHost (lp->convertTo0to1 (4.0f));
+    renderDense (proc, ph, sr, 2.2);
+    ed->setSize (780, 360);
+    for (int t = 0; t < numThemes; ++t)
+    {
+        ed->applyTheme (t);
+        scope.refreshForTest();
+        snapshot (*ed, "7_dense_theme" + juce::String (t));
+    }
+    ed->applyTheme (0);
+    scope.setViewForTest (0.2, 0.1);
+    scope.refreshForTest();
+    snapshot (*ed, "8_dense_zoom");
 
     ed.reset();
     proc.setPlayHead (nullptr);

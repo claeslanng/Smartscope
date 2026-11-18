@@ -8,6 +8,7 @@ namespace
 {
     constexpr float rulerHeight = 20.0f;
     constexpr float leftMargin  = 44.0f;   // room for the amplitude labels
+    constexpr float ampScale    = 0.95f;   // 0 dBFS sits just inside the top/bottom edge
 
     juce::String formatWholeNoteFraction (double quarterNotes)
     {
@@ -153,8 +154,26 @@ void ScopeView::rebuild()
     const float* src = proc.getDisplayData();
 
     float peak = 0.0f;
+    clipRuns.clear();
+    int runStart = -1;
     for (int i = 0; i < n; ++i)
-        peak = juce::jmax (peak, std::abs (src[i]));
+    {
+        const float a = std::abs (src[i]);
+        peak = juce::jmax (peak, a);
+
+        if (a > 1.0f)
+        {
+            if (runStart < 0)
+                runStart = i;
+        }
+        else if (runStart >= 0)
+        {
+            clipRuns.emplace_back (runStart, i - 1);
+            runStart = -1;
+        }
+    }
+    if (runStart >= 0)
+        clipRuns.emplace_back (runStart, n - 1);
     windowPeak = peak;
 
     processInto (src, n, wp, data, lpOn, lpHz);
@@ -394,28 +413,30 @@ void ScopeView::mouseMagnify (const juce::MouseEvent& e, float scaleFactor)
         zoomAround (xFrac, 1.0 / (double) scaleFactor);
 }
 
+
 //==============================================================================
 void ScopeView::paint (juce::Graphics& g)
 {
-    g.fillAll (ScopeColours::background);
+    const auto& t = theme();
+    g.fillAll (t.scopeBg);
 
     const auto ruler = getRulerArea();
     const auto trace = getTraceArea();
     const float gain = getGainLinear();
 
-    g.setColour (ScopeColours::panel);
-    g.fillRect (ruler);
+    g.setColour (t.rulerBg);
+    g.fillRect (getLocalBounds().toFloat().removeFromTop (rulerHeight));
 
     drawGrid (g, trace, ruler);
 
     {
         juce::Graphics::ScopedSaveState save (g);
-        g.reduceClipRegion (trace.toNearestInt());
+        g.reduceClipRegion (trace.expanded (0.0f, 4.0f).toNearestInt());
 
         if (holdActive && ! holdData.empty())
-            drawTrace (g, holdData, trace, ScopeColours::hold.withAlpha (0.8f), gain, 1.7f);
+            drawTrace (g, holdData, trace, t.hold.withAlpha (0.85f), gain, 1.6f, 0.0f);
 
-        drawTrace (g, data, trace, ScopeColours::trace, gain, 1.7f);
+        drawTrace (g, data, trace, t.trace, gain, 1.6f, t.glow);
 
         // Play cursor
         if (proc.isHostPlaying() && windowN > 0)
@@ -424,38 +445,84 @@ void ScopeView::paint (juce::Graphics& g)
             if (frac >= 0.0 && frac <= 1.0)
             {
                 const float x = trace.getX() + (float) frac * trace.getWidth();
-                g.setColour (ScopeColours::accent.withAlpha (0.55f));
-                g.drawVerticalLine ((int) x, trace.getY(), trace.getBottom());
+                g.setColour (t.accent.withAlpha (0.6f));
+                g.fillRect (x - 0.5f, trace.getY(), 1.0f, trace.getHeight());
             }
         }
     }
+
+    drawClipMarkers (g, trace);
 
     // Peak readout (top right of the trace area)
     {
         const bool clipping = windowPeak > 1.0f;
         const float peakDb = juce::Decibels::gainToDecibels (windowPeak, -100.0f);
-        juce::String peakText = "Peak " + (windowPeak > 0.0f ? juce::String (peakDb, 1) + " dB" : juce::String ("-inf"));
+        const juce::String peakText = "Peak " + (windowPeak > 0.0f ? juce::String (peakDb, 1) + " dB" : juce::String ("-inf"));
         g.setFont (juce::FontOptions (12.0f));
-        g.setColour (clipping ? ScopeColours::clip : ScopeColours::textDim);
-        g.drawText (peakText, trace.withHeight (16.0f).withTrimmedRight (8.0f).translated (0.0f, 2.0f),
+        g.setColour (clipping ? t.clip : t.textDim);
+        g.drawText (peakText, trace.withHeight (16.0f).withTrimmedRight (8.0f).translated (0.0f, 14.0f),
                     juce::Justification::centredRight);
     }
 
     if (hovering && ! dragging)
         drawHover (g, trace, gain);
 
-    // Thin frame
-    g.setColour (ScopeColours::gridMid);
-    g.drawRect (getLocalBounds().toFloat().withTrimmedLeft (leftMargin), 1.0f);
+    g.setColour (t.outline);
+    g.drawRect (getLocalBounds().toFloat(), 1.0f);
+}
+
+void ScopeView::drawClipMarkers (juce::Graphics& g, juce::Rectangle<float> area)
+{
+    if (clipRuns.empty() || windowN <= 0)
+        return;
+
+    const auto& t = theme();
+    const double startS = viewStart * windowN;
+    const double visS = viewSpan * windowN;
+    const double pxPerSample = (double) area.getWidth() / visS;
+
+    g.setColour (t.clip);
+    for (auto [a, b] : clipRuns)
+    {
+        if ((double) b + 1.0 < startS || (double) a > startS + visS)
+            continue;
+
+        float x0 = area.getX() + (float) (((double) a - startS) * pxPerSample);
+        float x1 = area.getX() + (float) (((double) b + 1.0 - startS) * pxPerSample);
+        x0 = juce::jmax (x0, area.getX());
+        x1 = juce::jmin (x1, area.getRight());
+        const float w = juce::jmax (2.0f, x1 - x0);
+
+        // A short red tick at the top edge of the display
+        g.fillRect (x0, area.getY() - 6.0f, w, 12.0f);
+    }
+
 }
 
 void ScopeView::drawGrid (juce::Graphics& g, juce::Rectangle<float> trace, juce::Rectangle<float> ruler)
 {
+    const auto& t = theme();
     const float W = trace.getWidth();
     if (W <= 0.0f || windowQN <= 0.0)
         return;
 
     g.setFont (juce::FontOptions (11.0f));
+
+    auto hLine = [&] (float y, juce::Colour c)
+    {
+        g.setColour (c);
+        g.fillRect (trace.getX(), std::round (y) - 0.5f, W, 1.0f);
+    };
+    auto vLine = [&] (float x, juce::Colour c)
+    {
+        g.setColour (c);
+        g.fillRect (std::round (x) - 0.5f, trace.getY(), 1.0f, trace.getHeight());
+    };
+    auto tick = [&] (float x, float len, juce::Colour c)
+    {
+        g.setColour (c);
+        g.fillRect (std::round (x) - 0.5f, ruler.getBottom() - len, 1.0f, len);
+    };
 
     //--------------------------------------------------------------------------
     // Amplitude grid: linear scale, labelled in dB. 0 dB = full scale.
@@ -463,32 +530,32 @@ void ScopeView::drawGrid (juce::Graphics& g, juce::Rectangle<float> trace, juce:
     const float cy = trace.getCentreY();
     const float halfH = trace.getHeight() * 0.5f;
 
-    g.setColour (ScopeColours::centreLine);
-    g.drawHorizontalLine ((int) cy, trace.getX(), trace.getRight());
-    g.setColour (ScopeColours::textDim);
-    g.drawText ("-inf", juce::Rectangle<float> (0.0f, cy - 7.0f, leftMargin - 6.0f, 14.0f), juce::Justification::centredRight);
+    auto ampLabel = [&] (float y, const juce::String& text)
+    {
+        g.setColour (t.textDim);
+        g.drawText (text, juce::Rectangle<float> (0.0f, y - 7.0f, leftMargin - 8.0f, 14.0f), juce::Justification::centredRight);
+    };
 
     float lastOffset = 0.0f;
     for (int db = 0; db >= -60; db -= 6)
     {
         const float a = juce::Decibels::decibelsToGain ((float) db);
-        const float offset = a * gain * halfH * 0.9f;
-        if (offset > halfH - 2.0f)
+        const float offset = a * gain * halfH * ampScale;
+        if (offset > halfH + 1.0f)
             continue;
-        if (offset < 16.0f || (lastOffset > 0.0f && lastOffset - offset < 16.0f))
+        if (offset < 14.0f || (lastOffset > 0.0f && lastOffset - offset < 18.0f))
             continue;
         lastOffset = offset;
 
         for (float sign : { -1.0f, 1.0f })
         {
             const float y = cy + sign * offset;
-            g.setColour (db == 0 ? ScopeColours::gridMajor : ScopeColours::gridMinor);
-            g.drawHorizontalLine ((int) y, trace.getX(), trace.getRight());
-            g.setColour (ScopeColours::textDim);
-            g.drawText (juce::String (db), juce::Rectangle<float> (0.0f, y - 7.0f, leftMargin - 6.0f, 14.0f),
-                        juce::Justification::centredRight);
+            hLine (y, db == 0 ? t.gridBar : t.gridSub);
+            ampLabel (y, juce::String (db));
         }
     }
+    hLine (cy, t.centreLine);
+    ampLabel (cy, "-inf");
 
     //--------------------------------------------------------------------------
     // Time grid: musical subdivisions, or milliseconds when zoomed in very far
@@ -497,6 +564,23 @@ void ScopeView::drawGrid (juce::Graphics& g, juce::Rectangle<float> trace, juce:
     const double pxPerQN = (double) W / visQN;
 
     auto xForQN = [&] (double qn) { return trace.getX() + (float) ((qn - qnStart) * pxPerQN); };
+
+    auto drawLabel = [&] (float x, const juce::String& text, juce::Colour c)
+    {
+        if (x < ruler.getRight() - 24.0f)
+        {
+            g.setColour (c);
+            g.drawText (text, juce::Rectangle<float> (x + 4.0f, ruler.getY(), 80.0f, ruler.getHeight() - 3.0f),
+                        juce::Justification::centredLeft);
+        }
+    };
+
+    auto pickMinor = [] (double step, double pxPerUnit)
+    {
+        if (step / 4.0 * pxPerUnit >= 14.0) return step / 4.0;
+        if (step / 2.0 * pxPerUnit >= 14.0) return step / 2.0;
+        return 0.0;
+    };
 
     constexpr double finestMusical = 4.0 / 128.0;   // a 1/128 note, in quarter notes
     const bool msMode = finestMusical * pxPerQN > 140.0 && windowN > 0 && sampleRate > 0.0;
@@ -508,6 +592,18 @@ void ScopeView::drawGrid (juce::Graphics& g, juce::Rectangle<float> trace, juce:
         for (double s : steps)
             if (s * pxPerQN >= 64.0) { step = s; break; }
 
+        if (const double minor = pickMinor (step, pxPerQN); minor > 0.0)
+        {
+            const double first = std::ceil (qnStart / minor - 1.0e-9) * minor;
+            for (double qn = first; qn <= qnStart + visQN + 1.0e-9; qn += minor)
+            {
+                if (std::abs (std::remainder (qn, step)) < 1.0e-9)
+                    continue;
+                vLine (xForQN (qn), t.gridMinor);
+                tick (xForQN (qn), 3.0f, t.gridSub);
+            }
+        }
+
         const double first = std::ceil (qnStart / step - 1.0e-9) * step;
         for (double qn = first; qn <= qnStart + visQN + 1.0e-9; qn += step)
         {
@@ -515,18 +611,9 @@ void ScopeView::drawGrid (juce::Graphics& g, juce::Rectangle<float> trace, juce:
             const bool isBar  = std::abs (std::remainder (qn, barQN)) < 1.0e-6;
             const bool isBeat = std::abs (std::remainder (qn, 1.0)) < 1.0e-6;
 
-            g.setColour (isBar ? ScopeColours::gridMajor : (isBeat ? ScopeColours::gridMid : ScopeColours::gridMinor));
-            g.drawVerticalLine ((int) x, trace.getY(), trace.getBottom());
-
-            g.setColour (ScopeColours::gridMid);
-            g.drawVerticalLine ((int) x, ruler.getBottom() - 5.0f, ruler.getBottom());
-
-            if (x < ruler.getRight() - 20.0f)
-            {
-                g.setColour (isBeat ? ScopeColours::text : ScopeColours::textDim);
-                g.drawText (formatWholeNoteFraction (qn), juce::Rectangle<float> (x + 3.0f, ruler.getY(), 70.0f, ruler.getHeight() - 2.0f),
-                            juce::Justification::centredLeft);
-            }
+            vLine (x, isBar ? t.gridBar : (isBeat ? t.gridBeat : t.gridSub));
+            tick (x, isBeat ? 7.0f : 5.0f, isBar ? t.textDim : t.gridBar);
+            drawLabel (x, formatWholeNoteFraction (qn), isBeat ? t.text : t.textDim);
         }
     }
     else
@@ -541,43 +628,45 @@ void ScopeView::drawGrid (juce::Graphics& g, juce::Rectangle<float> trace, juce:
         for (double s : steps)
             if (s * pxPerMs >= 64.0) { step = s; break; }
 
+        if (const double minor = pickMinor (step, pxPerMs); minor > 0.0)
+        {
+            const double first = std::ceil (msStart / minor - 1.0e-9) * minor;
+            for (double ms = first; ms <= msStart + visMs + 1.0e-9; ms += minor)
+            {
+                if (std::abs (std::remainder (ms, step)) < step * 1.0e-6)
+                    continue;
+                const float x = trace.getX() + (float) ((ms - msStart) * pxPerMs);
+                vLine (x, t.gridMinor);
+                tick (x, 3.0f, t.gridSub);
+            }
+        }
+
         const double first = std::ceil (msStart / step - 1.0e-9) * step;
         for (double ms = first; ms <= msStart + visMs + 1.0e-9; ms += step)
         {
             const float x = trace.getX() + (float) ((ms - msStart) * pxPerMs);
-            g.setColour (ScopeColours::gridMinor);
-            g.drawVerticalLine ((int) x, trace.getY(), trace.getBottom());
-            g.setColour (ScopeColours::gridMid);
-            g.drawVerticalLine ((int) x, ruler.getBottom() - 5.0f, ruler.getBottom());
-
-            if (x < ruler.getRight() - 20.0f)
-            {
-                g.setColour (ScopeColours::textDim);
-                g.drawText (formatMs (ms, step), juce::Rectangle<float> (x + 3.0f, ruler.getY(), 70.0f, ruler.getHeight() - 2.0f),
-                            juce::Justification::centredLeft);
-            }
+            vLine (x, t.gridSub);
+            tick (x, 5.0f, t.gridBar);
+            drawLabel (x, formatMs (ms, step), t.textDim);
         }
 
-        // Musical lines still matter when zoomed in: draw any that are visible in accent colour
-        const double first16 = std::ceil (qnStart / finestMusical - 1.0e-9) * finestMusical;
-        for (double qn = first16; qn <= qnStart + visQN + 1.0e-9; qn += finestMusical)
-        {
-            g.setColour (ScopeColours::accent.withAlpha (0.35f));
-            g.drawVerticalLine ((int) xForQN (qn), trace.getY(), trace.getBottom());
-        }
+        // Musical positions still matter when zoomed in: mark any that are visible
+        const double firstQ = std::ceil (qnStart / finestMusical - 1.0e-9) * finestMusical;
+        for (double qn = firstQ; qn <= qnStart + visQN + 1.0e-9; qn += finestMusical)
+            vLine (xForQN (qn), t.accent.withAlpha (0.35f));
     }
 }
 
 void ScopeView::drawTrace (juce::Graphics& g, const std::vector<float>& d, juce::Rectangle<float> area,
-                           juce::Colour colour, float gain, float lineWidth)
+                           juce::Colour colour, float gain, float lineWidth, float glow)
 {
     const int n = (int) d.size();
     if (n < 2 || area.getWidth() <= 0.0f)
         return;
 
     const float cy = area.getCentreY();
-    const float scale = area.getHeight() * 0.5f * 0.9f * gain;
-    const float top = area.getY() - 2.0f, bottom = area.getBottom() + 2.0f;
+    const float scale = area.getHeight() * 0.5f * ampScale * gain;
+    const float top = area.getY() - 3.0f, bottom = area.getBottom() + 3.0f;
 
     auto yFor = [&] (float v) { return juce::jlimit (top, bottom, cy - v * scale); };
 
@@ -586,76 +675,92 @@ void ScopeView::drawTrace (juce::Graphics& g, const std::vector<float>& d, juce:
 
     const float pixelScale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
     const int cols = juce::jmax (1, (int) std::ceil (area.getWidth() * pixelScale));
-    const double samplesPerCol = visS / (double) cols;
+    const double spc = visS / (double) cols;
 
-    g.setColour (colour);
+    juce::Path p;
+    bool isEnvelope = false;
 
-    if (samplesPerCol > 1.0)
+    if (spc > 1.0)
     {
-        // Dense: for every pixel column take the min and max, and join them in the order
-        // they occur in time. Stroked as one smooth anti-aliased line, this keeps the
-        // shape of each cycle readable (a kick looks like a kick, not a spiky bar chart)
-        // while very dense content still fills in solidly.
-        const int lcols = juce::jmax (1, (int) std::ceil (area.getWidth()));
-        const double spc = visS / (double) lcols;
-        const float colW = area.getWidth() / (float) lcols;
+        // Dense: build the min/max envelope (one column per physical pixel) as a single
+        // closed shape. Filled and given a thin outline, it reads as solid where the
+        // signal is busy, keeps a minimum thickness where it is sparse, and has smooth
+        // anti-aliased edges throughout.
+        isEnvelope = true;
+        const float colW = area.getWidth() / (float) cols;
+        envHi.resize ((size_t) cols);
+        envLo.resize ((size_t) cols);
 
-        juce::Path p;
-        p.preallocateSpace (lcols * 6 + 6);
-        bool started = false;
-
-        auto addPoint = [&] (float x, float y)
-        {
-            if (! started) { p.startNewSubPath (x, y); started = true; }
-            else           p.lineTo (x, y);
-        };
-
-        for (int c = 0; c < lcols; ++c)
+        for (int c = 0; c < cols; ++c)
         {
             const int s0 = juce::jlimit (0, n - 1, (int) std::floor (startS + c * spc));
             const int s1 = juce::jlimit (0, n - 1, (int) std::floor (startS + (c + 1) * spc));
 
-            int loIdx = s0, hiIdx = s0;
+            float lo = d[(size_t) s0], hi = lo;
             for (int s = s0 + 1; s <= s1; ++s)
             {
                 const float v = d[(size_t) s];
-                if (v < d[(size_t) loIdx]) loIdx = s;
-                if (v > d[(size_t) hiIdx]) hiIdx = s;
+                lo = juce::jmin (lo, v);
+                hi = juce::jmax (hi, v);
             }
-
-            const float x0 = area.getX() + (float) c * colW;
-            const int first  = juce::jmin (loIdx, hiIdx);
-            const int second = juce::jmax (loIdx, hiIdx);
-
-            addPoint (x0 + colW * (float) ((first  - startS - c * spc) / spc), yFor (d[(size_t) first]));
-            if (second != first)
-                addPoint (x0 + colW * (float) ((second - startS - c * spc) / spc), yFor (d[(size_t) second]));
+            envHi[(size_t) c] = yFor (hi);
+            envLo[(size_t) c] = yFor (lo);
         }
 
-        g.strokePath (p, juce::PathStrokeType (lineWidth, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        p.preallocateSpace (cols * 6 + 8);
+        auto xFor = [&] (int c) { return area.getX() + ((float) c + 0.5f) * colW; };
+
+        p.startNewSubPath (xFor (0), envHi[0]);
+        for (int c = 1; c < cols; ++c)
+            p.lineTo (xFor (c), envHi[(size_t) c]);
+        for (int c = cols - 1; c >= 0; --c)
+            p.lineTo (xFor (c), envLo[(size_t) c]);
+        p.closeSubPath();
     }
     else
     {
-        // Zoomed in: connect the individual samples, and show dots once they are far apart
+        // Zoomed in: connect the individual samples
         const int i0 = juce::jlimit (0, n - 1, (int) std::floor (startS) - 1);
         const int i1 = juce::jlimit (0, n - 1, (int) std::ceil (startS + visS) + 1);
         const double pxPerSample = (double) area.getWidth() / visS;
-
         auto xFor = [&] (int i) { return area.getX() + (float) (((double) i - startS) * pxPerSample); };
 
-        juce::Path p;
         p.preallocateSpace ((i1 - i0 + 1) * 3);
         p.startNewSubPath (xFor (i0), yFor (d[(size_t) i0]));
         for (int i = i0 + 1; i <= i1; ++i)
             p.lineTo (xFor (i), yFor (d[(size_t) i]));
+    }
 
-        g.strokePath (p, juce::PathStrokeType (lineWidth, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    const juce::PathStrokeType stroke (isEnvelope ? lineWidth * 0.75f : lineWidth,
+                                       juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
 
+    if (glow > 0.0f)
+    {
+        g.setColour (colour.withMultipliedAlpha (glow * 0.5f));
+        g.strokePath (p, juce::PathStrokeType (lineWidth * 5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (colour.withMultipliedAlpha (glow));
+        g.strokePath (p, juce::PathStrokeType (lineWidth * 2.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    g.setColour (colour);
+    if (isEnvelope)
+        g.fillPath (p);
+    g.strokePath (p, stroke);
+
+    // Sample dots once samples are far apart
+    if (! isEnvelope)
+    {
+        const double pxPerSample = (double) area.getWidth() / visS;
         if (pxPerSample > 7.0)
         {
-            const float r = pxPerSample > 16.0 ? 2.5f : 1.8f;
+            const int i0 = juce::jlimit (0, n - 1, (int) std::floor (startS) - 1);
+            const int i1 = juce::jlimit (0, n - 1, (int) std::ceil (startS + visS) + 1);
+            const float r = pxPerSample > 16.0 ? 2.6f : 1.9f;
             for (int i = i0; i <= i1; ++i)
-                g.fillEllipse (xFor (i) - r, yFor (d[(size_t) i]) - r, r * 2.0f, r * 2.0f);
+            {
+                const float x = area.getX() + (float) (((double) i - startS) * pxPerSample);
+                g.fillEllipse (x - r, yFor (d[(size_t) i]) - r, r * 2.0f, r * 2.0f);
+            }
         }
     }
 }
@@ -665,20 +770,20 @@ void ScopeView::drawHover (juce::Graphics& g, juce::Rectangle<float> area, float
     if (windowN <= 0 || data.empty() || area.getWidth() <= 0.0f)
         return;
 
+    const auto& t = theme();
     const float x = juce::jlimit (area.getX(), area.getRight(), hoverPos.x);
     const double frac = viewStart + (double) ((x - area.getX()) / area.getWidth()) * viewSpan;
     const int idx = juce::jlimit (0, windowN - 1, (int) std::lround (frac * windowN));
     const double ms = (double) idx / sampleRate * 1000.0;
     const float v = data[(size_t) juce::jmin ((int) data.size() - 1, idx)];
 
-    g.setColour (ScopeColours::text.withAlpha (0.25f));
-    g.drawVerticalLine ((int) x, area.getY(), area.getBottom());
+    g.setColour (t.text.withAlpha (0.25f));
+    g.fillRect (std::round (x) - 0.5f, area.getY(), 1.0f, area.getHeight());
 
-    // Marker on the trace at the hovered sample
     const float cy = area.getCentreY();
-    const float y = juce::jlimit (area.getY(), area.getBottom(), cy - v * area.getHeight() * 0.5f * 0.9f * gain);
-    g.setColour (ScopeColours::accent);
-    g.fillEllipse (x - 3.0f, y - 3.0f, 6.0f, 6.0f);
+    const float y = juce::jlimit (area.getY(), area.getBottom(), cy - v * area.getHeight() * 0.5f * ampScale * gain);
+    g.setColour (t.accent);
+    g.fillEllipse (x - 3.5f, y - 3.5f, 7.0f, 7.0f);
 
     const float db = juce::Decibels::gainToDecibels (std::abs (v), -100.0f);
     juce::String text;
@@ -687,10 +792,11 @@ void ScopeView::drawHover (juce::Graphics& g, juce::Rectangle<float> area, float
          << "  (" << (std::abs (v) > 0.0f ? juce::String (db, 1) + " dB" : juce::String ("-inf")) << ")";
 
     g.setFont (juce::FontOptions (12.0f));
-    const float tw = 210.0f;
-    auto box = juce::Rectangle<float> (area.getX() + 8.0f, area.getY() + 4.0f, tw, 18.0f);
-    g.setColour (ScopeColours::background.withAlpha (0.85f));
+    auto box = juce::Rectangle<float> (area.getX() + 8.0f, area.getY() + 6.0f, 214.0f, 19.0f);
+    g.setColour (t.scopeBg.withAlpha (0.88f));
     g.fillRoundedRectangle (box, 3.0f);
-    g.setColour (ScopeColours::text);
-    g.drawText (text, box.reduced (6.0f, 0.0f), juce::Justification::centredLeft);
+    g.setColour (t.outline);
+    g.drawRoundedRectangle (box, 3.0f, 1.0f);
+    g.setColour (t.text);
+    g.drawText (text, box.reduced (7.0f, 0.0f), juce::Justification::centredLeft);
 }

@@ -2,25 +2,10 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
+#include "Themes.h"
 
 #include <functional>
 #include <vector>
-
-namespace ScopeColours
-{
-    const juce::Colour background   { 0xff141517 };
-    const juce::Colour panel        { 0xff1d1f22 };
-    const juce::Colour gridMajor    { 0xff3a3d42 };
-    const juce::Colour gridMid      { 0xff2c2f33 };
-    const juce::Colour gridMinor    { 0xff222428 };
-    const juce::Colour centreLine   { 0xff5a5e64 };
-    const juce::Colour text         { 0xffb8bcc2 };
-    const juce::Colour textDim      { 0xff70757c };
-    const juce::Colour trace        { 0xffd4d4d6 };
-    const juce::Colour accent       { 0xfff08a24 };
-    const juce::Colour hold         { 0xff3fb6ff };
-    const juce::Colour clip         { 0xffff4a4a };
-}
 
 //==============================================================================
 /** The waveform display: draws the processor's window buffer, handles zooming,
@@ -70,6 +55,7 @@ private:
     int    windowN = 0;
     int    writePos = 0;
     float  windowPeak = 0.0f;
+    std::vector<std::pair<int, int>> clipRuns;   // sample ranges above 0 dBFS (raw signal)
     double sampleRate = 44100.0;
     double windowQN = 2.0;
     double barQN = 4.0;
@@ -93,6 +79,9 @@ private:
     float  wheelAccumulator = 0.0f;
 
     std::vector<double> filterScratch;
+    std::vector<float> envHi, envLo;
+
+    const Theme& theme() const { return getTheme (proc.themeIndex.load()); }
 
     juce::Rectangle<float> getRulerArea() const;
     juce::Rectangle<float> getTraceArea() const;
@@ -112,7 +101,8 @@ private:
 
     void drawGrid (juce::Graphics&, juce::Rectangle<float> trace, juce::Rectangle<float> ruler);
     void drawTrace (juce::Graphics&, const std::vector<float>& d, juce::Rectangle<float> area,
-                    juce::Colour colour, float gain, float lineWidth);
+                    juce::Colour colour, float gain, float lineWidth, float glow);
+    void drawClipMarkers (juce::Graphics&, juce::Rectangle<float> area);
     void drawHover (juce::Graphics&, juce::Rectangle<float> area, float gain);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScopeView)

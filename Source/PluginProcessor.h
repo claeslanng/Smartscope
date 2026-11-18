@@ -90,6 +90,9 @@ public:
     // Editor size, saved with the project
     int editorWidth = 900, editorHeight = 480;
 
+    // Colour theme, saved with the project
+    std::atomic<int> themeIndex { 0 };
+
 private:
     std::unique_ptr<float[]> display;
 

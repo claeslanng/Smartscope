@@ -12,7 +12,9 @@ A tempo-synced oscilloscope VST3 for checking whether kicks and basses are in ph
 - **Low-pass for the display only:** shows just the kick and bass. It doesn't touch the audio, adds no phase shift or delay, and also redraws while playback is stopped.
 - **Hold:** keeps a blue snapshot to compare against. Nudge the bass, then compare.
 - **Hover readout:** time in ms from the start of the window, plus the sample's value, sign and dB.
-- **Peak readout:** turns red above 0 dBFS.
+- **0 dB markers:** red ticks at the top of the display show where the signal goes above 0 dBFS, and the peak readout turns red.
+- **Themes:** Graphite, Midnight, Phosphor, Daylight. The choice is saved with the project.
+- **Help:** hover over the **?** button for the mouse shortcuts.
 
 The plugin passes audio through unchanged.
 
