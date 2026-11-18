@@ -297,13 +297,14 @@ void SmartscopeAudioProcessorEditor::toggleSettings()
         scope.repaint();
         for (auto& c : chips) c->repaint();
     };
-    settingsPanel->onClose = [this]
+    juce::Component::SafePointer<SmartscopeAudioProcessorEditor> safeThis (this);
+    settingsPanel->onClose = [safeThis]
     {
         // Defer: the panel's own button is calling us
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SmartscopeAudioProcessorEditor> (this)]
+        juce::MessageManager::callAsync ([safeThis]
         {
-            if (safe != nullptr && safe->settingsPanel != nullptr)
-                safe->toggleSettings();
+            if (safeThis != nullptr && safeThis->settingsPanel != nullptr)
+                safeThis->toggleSettings();
         });
     };
     addAndMakeVisible (*settingsPanel);
