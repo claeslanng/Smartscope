@@ -2,8 +2,13 @@ name: Build Windows VST3
 
 on:
   push:
+    branches: ["**"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write   # needed to publish releases on version tags
 
 jobs:
   windows:
@@ -29,3 +34,40 @@ jobs:
           name: Smartscope-VST3-Windows
           path: build/Smartscope_artefacts/Release/VST3/
           if-no-files-found: error
+
+      # ---- Releases: only when a version tag (v1.2.3) is pushed ----
+
+      - name: Zip plugin
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/Smartscope_artefacts/Release/VST3/Smartscope.vst3 `
+                           -DestinationPath "Smartscope-${{ github.ref_name }}-Windows-VST3.zip"
+
+      - name: Release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $pattern = '^## \[' + [regex]::Escape($version) + '\]'
+          $notes = @()
+          $inside = $false
+          foreach ($line in Get-Content CHANGELOG.md) {
+            if ($line -match '^## ') {
+              if ($inside) { break }
+              if ($line -match $pattern) { $inside = $true; continue }
+            }
+            if ($inside) { $notes += $line }
+          }
+          $notes += ''
+          $notes += '### Install'
+          $notes += 'Unzip and copy the `Smartscope.vst3` folder to `C:\Program Files\Common Files\VST3\`, then rescan plugins in your DAW.'
+          $notes -join "`n" | Out-File -Encoding utf8 release-notes.md
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Smartscope ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: Smartscope-${{ github.ref_name }}-Windows-VST3.zip

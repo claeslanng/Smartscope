@@ -348,6 +348,26 @@ int main()
         snapshot (*e2, "13_settings_min");
 
         e2.reset();
+
+        // Images for the README
+        if (auto* lp = p2.apvts.getParameter (ParamIDs::length))
+            lp->setValueNotifyingHost (lp->convertTo0to1 (4.0f));
+        p2.getUISettings().removeProperty (UISettings::colourKey (1), nullptr);
+        p2.getUISettings().removeProperty (UISettings::opacityKey (0), nullptr);
+        renderLayers (p2, ph2, sr, 2.5, 18.0);
+        std::unique_ptr<SmartscopeAudioProcessorEditor> e3 (
+            dynamic_cast<SmartscopeAudioProcessorEditor*> (p2.createEditor()));
+        e3->setSize (1000, 460);
+        e3->getScopeView().refreshForTest();
+        snapshot (*e3, "docs_hero");
+        e3->getScopeView().setViewForTest (0.0, 0.07);
+        e3->getScopeView().refreshForTest();
+        snapshot (*e3, "docs_zoom");
+        e3->getScopeView().resetZoom();
+        e3->setSize (900, 420);
+        e3->toggleSettings();
+        snapshot (*e3, "docs_settings");
+        e3.reset();
         p2.setPlayHead (nullptr);
     }
 
