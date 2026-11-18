@@ -1,5 +1,7 @@
 # Smartscope
 
+*by Claes Lanng Plugins*
+
 A tempo-synced oscilloscope VST3 for checking whether kicks and basses are in phase.
 
 ## Features
@@ -13,7 +15,9 @@ A tempo-synced oscilloscope VST3 for checking whether kicks and basses are in ph
 - **Hold:** keeps a blue snapshot to compare against. Nudge the bass, then compare.
 - **Hover readout:** time in ms from the start of the window, plus the sample's value, sign and dB.
 - **0 dB markers:** red ticks at the top of the display show where the signal goes above 0 dBFS, and the peak readout turns red.
-- **Themes:** Graphite, Midnight, Phosphor, Daylight. The choice is saved with the project.
+- **Sidechain layers:** up to three other tracks, each drawn as its own coloured layer on top of this track. Use it for kick vs. bass. The chips in the header show and hide each layer.
+- **Settings (gear button):** theme, colour and opacity for every layer and for the hold trace, plus display options (hover readout, play cursor, 0 dB markers, main layer on top).
+- **Themes:** Graphite, Midnight, Phosphor, Daylight. All settings are saved with the project.
 - **Help:** hover over the **?** button for the mouse shortcuts.
 
 The plugin passes audio through unchanged.
@@ -30,6 +34,13 @@ The plugin passes audio through unchanged.
 | Double-click | Reset zoom |
 
 When the transport is stopped, the scope free-runs at the project tempo while there is signal. When the signal goes silent, it keeps the last picture.
+
+## Sidechain layers in FL Studio
+
+1. Put Smartscope on the mixer track you want to look at (for example the bass).
+2. Select the source track (for example the kick). Then right-click the small arrow under Smartscope's track and choose **Sidechain to this track**.
+3. In Smartscope's plugin window, click FL's gear (*Detailed settings*) and open **Processing**. Under *Connections*, set **Sidechain 1** to the source track's number.
+4. The **SC 1** chip in Smartscope's header lights up, and the kick appears as a coloured layer. Repeat for Sidechain 2 and 3.
 
 ## Getting the plugin (Windows)
 

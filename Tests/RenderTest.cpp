@@ -5,6 +5,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "UISettings.h"
 
 #include <cmath>
 #include <iostream>
@@ -120,6 +121,52 @@ static void renderDense (SmartscopeAudioProcessor& p, FakePlayHead& ph, double s
             if (beat % 4 == 1 && tInBeat > 0.0 && tInBeat < 0.004) v *= 1.25; // a transient that overshoots 0 dBFS
             buf.setSample (0, i, (float) v);
             buf.setSample (1, i, (float) v);
+        }
+        p.processBlock (buf, midi);
+    }
+}
+
+// Bass on the main input, kick on sidechain 1 (bus 1)
+static void renderLayers (SmartscopeAudioProcessor& p, FakePlayHead& ph, double sr, double seconds, double bassDelayMs)
+{
+    const int block = 480;
+    const double spb = sr * 60.0 / ph.bpm;
+    const int numCh = p.getTotalNumInputChannels();
+    juce::AudioBuffer<float> buf (numCh, block);
+    juce::MidiBuffer midi;
+    const long total = (long) (seconds * sr);
+    double kickPhase = 0.0;
+
+    for (long s0 = 0; s0 < total; s0 += block)
+    {
+        const int n = (int) std::min<long> (block, total - s0);
+        buf.setSize (numCh, n, false, false, true);
+        buf.clear();
+        ph.ppq = (double) s0 / spb;
+        for (int i = 0; i < n; ++i)
+        {
+            const long s = s0 + i;
+            const double tInBeat = std::fmod ((double) s, spb) / sr;
+            if (std::fmod ((double) s, spb) < 1.0) kickPhase = 0.0;
+            const double f = 50.0 + 130.0 * std::exp (-tInBeat * 35.0);
+            kickPhase += juce::MathConstants<double>::twoPi * f / sr;
+            const double kick = 0.9 * std::sin (kickPhase) * std::exp (-tInBeat * 7.0);
+
+            const double tb = tInBeat - bassDelayMs / 1000.0;
+            double bass = 0.0;
+            if (tb > 0.0)
+            {
+                double saw = 0.0;
+                for (int h = 1; h <= 5; ++h) saw += std::sin (juce::MathConstants<double>::twoPi * 52.0 * h * tb) / h;
+                bass = 0.5 * saw * (1.0 - std::exp (-tb * 150.0)) * std::exp (-tb * 2.0);
+            }
+            buf.setSample (0, i, (float) bass);
+            buf.setSample (1, i, (float) bass);
+            if (numCh >= 4)
+            {
+                buf.setSample (2, i, (float) kick);
+                buf.setSample (3, i, (float) kick);
+            }
         }
         p.processBlock (buf, midi);
     }
@@ -252,6 +299,57 @@ int main()
 
     ed.reset();
     proc.setPlayHead (nullptr);
+
+    //--------------------------------------------------------------------------
+    std::cout << "Sidechain layers" << std::endl;
+    {
+        SmartscopeAudioProcessor p2;
+        auto layout = p2.getBusesLayout();
+        layout.inputBuses.getReference (1) = juce::AudioChannelSet::stereo();
+        check (p2.setBusesLayout (layout), "stereo sidechain 1 layout accepted");
+        FakePlayHead ph2;
+        p2.setPlayHead (&ph2);
+        p2.setRateAndBufferSizeDetails (sr, 512);
+        p2.prepareToPlay (sr, 512);
+        check (p2.getTotalNumInputChannels() == 4, "4 input channels with sidechain 1 enabled");
+
+        renderLayers (p2, ph2, sr, 3.0, 20.0);
+        check (p2.isLayerConnected (1) && ! p2.isLayerConnected (2), "sidechain 1 connected, 2 not");
+
+        const float* k = p2.getDisplayData (1);
+        int kOff = -1;
+        for (int i = 0; i < 200; ++i) if (std::abs (k[i]) > 0.02f) { kOff = i; break; }
+        check (kOff >= 0 && kOff < 4, "kick on sidechain lands at window start (offset " + juce::String (kOff) + ")");
+
+        const float* m = p2.getDisplayData (0);
+        int bOff = -1;
+        for (int i = 0; i < 4000; ++i) if (std::abs (m[i]) > 0.02f) { bOff = i; break; }
+        const int expected = (int) std::lround (0.020 * sr);
+        check (bOff >= expected && bOff < expected + 60, "bass on main starts ~20 ms in (sample " + juce::String (bOff) + ")");
+
+        std::unique_ptr<SmartscopeAudioProcessorEditor> e2 (
+            dynamic_cast<SmartscopeAudioProcessorEditor*> (p2.createEditor()));
+        e2->setSize (900, 420);
+        auto& sv = e2->getScopeView();
+        sv.refreshForTest();
+        snapshot (*e2, "9_layers_full");
+        sv.setViewForTest (0.0, 0.08);
+        sv.refreshForTest();
+        snapshot (*e2, "10_layers_zoom");
+
+        p2.getUISettings().setProperty (UISettings::colourKey (1), juce::Colour (0xffffd23f).toString(), nullptr);
+        p2.getUISettings().setProperty (UISettings::opacityKey (0), 0.6, nullptr);
+        sv.refreshForTest();
+        snapshot (*e2, "11_layers_custom_colour");
+
+        e2->toggleSettings();
+        snapshot (*e2, "12_settings");
+        e2->setSize (760, 360);
+        snapshot (*e2, "13_settings_min");
+
+        e2.reset();
+        p2.setPlayHead (nullptr);
+    }
 
     std::cout << (failures == 0 ? "ALL CHECKS PASSED" : "SOME CHECKS FAILED") << std::endl;
     return failures == 0 ? 0 : 1;

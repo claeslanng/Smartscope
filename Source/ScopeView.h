@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
 #include "Themes.h"
+#include "UISettings.h"
 
 #include <functional>
 #include <vector>
@@ -51,7 +52,9 @@ private:
     double viewSpan  = 1.0;
 
     // Snapshot of the processor's buffer (filtered if the low-pass is on), in window order
-    std::vector<float> data;
+    std::vector<float> layerData[numLayers];
+    bool layerShown[numLayers] { true, false, false, false };   // connected (snapshot)
+    std::vector<float>& data = layerData[0];
     int    windowN = 0;
     int    writePos = 0;
     float  windowPeak = 0.0f;
@@ -67,6 +70,7 @@ private:
 
     // Change detection
     uint32_t lastWriteCounter = 0, lastResetCounter = 0;
+    bool lastConnected[numLayers] { true, false, false, false };
     bool  lastLpOn = false;
     float lastLpHz = 0.0f;
     bool  needsRebuild = true;

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Smartscope VERSION 1.0.0)
+project(Smartscope VERSION 1.1.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,7 +19,7 @@ FetchContent_MakeAvailable(JUCE)
 option(SMARTSCOPE_BUILD_TESTS "Build the offline render test harness" OFF)
 
 juce_add_plugin(Smartscope
-    COMPANY_NAME "claeslanng"
+    COMPANY_NAME "Claes Lanng Plugins"
     BUNDLE_ID "com.claeslanng.smartscope"
     PLUGIN_MANUFACTURER_CODE Clng
     PLUGIN_CODE Smsc
@@ -36,9 +36,11 @@ juce_add_plugin(Smartscope
 target_sources(Smartscope PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
-    Source/ScopeView.cpp)
+    Source/ScopeView.cpp
+    Source/SettingsPanel.cpp)
 
 target_compile_definitions(Smartscope PUBLIC
+    "SMARTSCOPE_VERSION=\"${PROJECT_VERSION}\""
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
@@ -48,6 +50,7 @@ target_link_libraries(Smartscope
     PRIVATE
         juce::juce_audio_utils
         juce::juce_dsp
+        juce::juce_gui_extra
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
@@ -59,11 +62,13 @@ if(SMARTSCOPE_BUILD_TESTS)
         Tests/RenderTest.cpp
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
-        Source/ScopeView.cpp)
+        Source/ScopeView.cpp
+        Source/SettingsPanel.cpp)
     target_include_directories(RenderTest PRIVATE Source)
     target_compile_definitions(RenderTest PRIVATE
-        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 SMARTSCOPE_TEST_BUILD=1)
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 SMARTSCOPE_TEST_BUILD=1
+        "SMARTSCOPE_VERSION=\"${PROJECT_VERSION}\"")
     target_link_libraries(RenderTest PRIVATE
-        juce::juce_audio_utils juce::juce_dsp
+        juce::juce_audio_utils juce::juce_dsp juce::juce_gui_extra
         juce::juce_recommended_config_flags)
 endif()

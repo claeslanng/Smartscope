@@ -8,13 +8,20 @@
 SmartscopeAudioProcessor::SmartscopeAudioProcessor()
     : AudioProcessor (BusesProperties()
                           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+                          .withInput  ("Sidechain 1", juce::AudioChannelSet::stereo(), false)
+                          .withInput  ("Sidechain 2", juce::AudioChannelSet::stereo(), false)
+                          .withInput  ("Sidechain 3", juce::AudioChannelSet::stereo(), false)),
       apvts (*this, nullptr, "Smartscope", createLayout())
 {
     // Allocated once, up front, so the editor can read it at any time without
     // the risk of it being reallocated underneath it.
-    display = std::make_unique<float[]> ((size_t) maxDisplaySamples);
-    std::memset (display.get(), 0, sizeof (float) * (size_t) maxDisplaySamples);
+    for (auto& d : display)
+    {
+        d = std::make_unique<float[]> ((size_t) maxDisplaySamples);
+        std::memset (d.get(), 0, sizeof (float) * (size_t) maxDisplaySamples);
+    }
+    layerConnected[0].store (true);
 
     lengthParam = apvts.getRawParameterValue (ParamIDs::length);
 }
@@ -54,7 +61,17 @@ bool SmartscopeAudioProcessor::isBusesLayoutSupported (const BusesLayout& layout
     const auto& out = layouts.getMainOutputChannelSet();
     if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo())
         return false;
-    return layouts.getMainInputChannelSet() == out;
+    if (layouts.getMainInputChannelSet() != out)
+        return false;
+
+    // Sidechains: off, mono or stereo
+    for (int bus = 1; bus < layouts.inputBuses.size(); ++bus)
+    {
+        const auto& set = layouts.getChannelSet (true, bus);
+        if (! set.isDisabled() && set != juce::AudioChannelSet::mono() && set != juce::AudioChannelSet::stereo())
+            return false;
+    }
+    return true;
 }
 
 void SmartscopeAudioProcessor::prepareToPlay (double sampleRate, int)
@@ -69,7 +86,8 @@ void SmartscopeAudioProcessor::resetWindow (int newWindowSamples)
 {
     // Clear everything that might be shown, including any leftovers from a longer window.
     const int toClear = juce::jmax (newWindowSamples, clearedUpTo);
-    std::memset (display.get(), 0, sizeof (float) * (size_t) toClear);
+    for (auto& d : display)
+        std::memset (d.get(), 0, sizeof (float) * (size_t) toClear);
     clearedUpTo = newWindowSamples;
 
     freePos = 0;
@@ -84,13 +102,33 @@ void SmartscopeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     juce::ScopedNoDenormals noDenormals;
 
     const int numSamples = buffer.getNumSamples();
-    const int numIn = getTotalNumInputChannels();
-    if (numSamples <= 0 || numIn <= 0)
+    if (numSamples <= 0 || getTotalNumInputChannels() <= 0)
         return;
 
-    // The plugin never touches the audio: it is a pure pass-through.
-    const float* left  = buffer.getReadPointer (0);
-    const float* right = numIn > 1 ? buffer.getReadPointer (1) : left;
+    // The plugin never touches the audio: it is a pure pass-through. Each layer is the
+    // L+R average of one input bus (main + up to three sidechains).
+    const float* lefts[numLayers]  = {};
+    const float* rights[numLayers] = {};
+    for (int layer = 0; layer < numLayers; ++layer)
+    {
+        const bool busExists = layer < getBusCount (true);
+        auto* bus = busExists ? getBus (true, layer) : nullptr;
+        const bool enabled = bus != nullptr && bus->isEnabled() && bus->getNumberOfChannels() > 0;
+        layerConnected[layer].store (enabled || layer == 0);
+
+        if (enabled)
+        {
+            auto busBuffer = getBusBuffer (buffer, true, layer);
+            if (busBuffer.getNumChannels() > 0)
+            {
+                lefts[layer]  = busBuffer.getReadPointer (0);
+                rights[layer] = busBuffer.getNumChannels() > 1 ? busBuffer.getReadPointer (1) : lefts[layer];
+            }
+        }
+    }
+
+    if (lefts[0] == nullptr)
+        return;
 
     //--------------------------------------------------------------------------
     // Musical position from the host
@@ -206,22 +244,41 @@ void SmartscopeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         synced.store (false);
 
         float peak = 0.0f;
-        for (int i = 0; i < numSamples; ++i)
-            peak = juce::jmax (peak, std::abs (left[i]), std::abs (right[i]));
+        for (int layer = 0; layer < numLayers; ++layer)
+            if (lefts[layer] != nullptr)
+                for (int i = 0; i < numSamples; ++i)
+                    peak = juce::jmax (peak, std::abs (lefts[layer][i]), std::abs (rights[layer][i]));
 
         if (peak < 1.0e-5f)
             return;
     }
 
     //--------------------------------------------------------------------------
-    float* d = display.get();
-    for (int i = 0; i < numSamples; ++i)
+    const int startPos = pos;
+    for (int layer = 0; layer < numLayers; ++layer)
     {
-        d[pos] = 0.5f * (left[i] + right[i]);
-        if (++pos >= N)
-            pos = 0;
+        float* d = display[layer].get();
+        const float* l = lefts[layer];
+        const float* r = rights[layer];
+        pos = startPos;
+
+        if (l == nullptr)
+        {
+            // Not connected: keep the layer silent so stale data never shows up
+            if (layer > 0)
+                for (int i = 0; i < numSamples; ++i) { d[pos] = 0.0f; if (++pos >= N) pos = 0; }
+            continue;
+        }
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            d[pos] = 0.5f * (l[i] + r[i]);
+            if (++pos >= N)
+                pos = 0;
+        }
     }
 
+    pos = (int) (((long long) startPos + numSamples) % N);
     freePos = pos;
     writePos.store (pos, std::memory_order_release);
     writeCounter.fetch_add (1, std::memory_order_acq_rel);

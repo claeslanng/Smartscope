@@ -34,6 +34,10 @@ inline constexpr LengthChoice lengthChoices[] = {
 inline constexpr int numLengthChoices = (int) (sizeof (lengthChoices) / sizeof (lengthChoices[0]));
 inline constexpr int defaultLengthIndex = 3;
 
+/** Layer 0 is the main input, layers 1..3 are the optional sidechain inputs. */
+inline constexpr int numLayers = 4;
+inline constexpr int numSidechains = numLayers - 1;
+
 //==============================================================================
 class SmartscopeAudioProcessor : public juce::AudioProcessor
 {
@@ -72,9 +76,15 @@ public:
     // Display data shared with the editor. The audio thread writes samples into
     // `display` at the position that corresponds to the host's musical position
     // inside the current window, so index 0 is always the start of the window.
-    static constexpr int maxDisplaySamples = 1 << 22; // ~87 s at 48 kHz, ~21 s at 192 kHz
+    static constexpr int maxDisplaySamples = 1 << 21; // ~43 s at 48 kHz, ~10 s at 192 kHz
 
-    const float* getDisplayData() const noexcept   { return display.get(); }
+    const float* getDisplayData (int layer = 0) const noexcept { return display[juce::jlimit (0, numLayers - 1, layer)].get(); }
+
+    /** True if the host has this sidechain bus enabled (layer 0 is always connected). */
+    bool isLayerConnected (int layer) const noexcept { return layerConnected[juce::jlimit (0, numLayers - 1, layer)].load(); }
+
+    /** UI-only settings (colours, opacities, toggles). Message thread only. Saved with the project. */
+    juce::ValueTree getUISettings() { return apvts.state.getOrCreateChildWithName ("UI", nullptr); }
     int    getWindowSamples() const noexcept       { return windowSamples.load (std::memory_order_acquire); }
     int    getWritePosition() const noexcept       { return writePos.load (std::memory_order_acquire); }
     uint32_t getWriteCounter() const noexcept      { return writeCounter.load (std::memory_order_acquire); }
@@ -94,7 +104,8 @@ public:
     std::atomic<int> themeIndex { 0 };
 
 private:
-    std::unique_ptr<float[]> display;
+    std::unique_ptr<float[]> display[numLayers];
+    std::atomic<bool> layerConnected[numLayers] {};
 
     std::atomic<int>      windowSamples { 0 };
     std::atomic<int>      writePos { 0 };

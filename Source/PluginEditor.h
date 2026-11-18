@@ -4,6 +4,8 @@
 #include "PluginProcessor.h"
 #include "ScopeView.h"
 #include "Themes.h"
+#include "UISettings.h"
+#include "SettingsPanel.h"
 
 //==============================================================================
 class SmartscopeLookAndFeel : public juce::LookAndFeel_V4
@@ -26,6 +28,7 @@ public:
     juce::Font getComboBoxFont (juce::ComboBox&) override;
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
     juce::Label* createSliderTextBox (juce::Slider&) override;
+    void drawCallOutBoxBackground (juce::CallOutBox&, juce::Graphics&, const juce::Path&, juce::Image&) override;
     void drawTooltip (juce::Graphics&, const juce::String& text, int width, int height) override;
     juce::Rectangle<int> getTooltipBounds (const juce::String& tipText, juce::Point<int> screenPos,
                                            juce::Rectangle<int> parentArea) override;
@@ -33,6 +36,37 @@ public:
 private:
     const Theme* theme = &themes[0];
     juce::TextLayout layoutTooltip (const juce::String&) const;
+};
+
+//==============================================================================
+/** Header chip for one layer: coloured dot + name. Click toggles visibility. */
+class LayerChip : public juce::Button
+{
+public:
+    LayerChip (SmartscopeAudioProcessor& p, int layerIndex)
+        : juce::Button (UISettings::layerName (layerIndex)), proc (p), layer (layerIndex) {}
+
+    void paintButton (juce::Graphics&, bool isOver, bool isDown) override;
+    void clicked() override;
+    void updateTooltip();
+
+    std::function<void()> onToggled;
+
+private:
+    SmartscopeAudioProcessor& proc;
+    int layer;
+};
+
+/** Small icon buttons (gear / question mark) drawn as vector shapes. */
+class IconButton : public juce::Button
+{
+public:
+    enum class Icon { gear, help };
+    IconButton (Icon i) : juce::Button ("icon"), icon (i) {}
+    void paintButton (juce::Graphics&, bool isOver, bool isDown) override;
+
+private:
+    Icon icon;
 };
 
 //==============================================================================
@@ -48,6 +82,7 @@ public:
 
     ScopeView& getScopeView() noexcept { return scope; }
     void applyTheme (int index);
+    void toggleSettings();
 
 private:
     SmartscopeAudioProcessor& proc;
@@ -56,8 +91,10 @@ private:
 
     ScopeView scope;
 
-    juce::ComboBox   themeBox;
-    juce::TextButton helpButton { "?" };
+    IconButton settingsButton { IconButton::Icon::gear };
+    IconButton helpButton     { IconButton::Icon::help };
+    std::unique_ptr<LayerChip> chips[numLayers];
+    std::unique_ptr<SettingsPanel> settingsPanel;
 
     juce::TextButton lengthDown { "<" }, lengthUp { ">" };
     juce::ComboBox   lengthBox;

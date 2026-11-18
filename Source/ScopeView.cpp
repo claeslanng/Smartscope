@@ -109,7 +109,11 @@ void ScopeView::timerCallback()
     const auto wc = proc.getWriteCounter();
     const auto rc = proc.getResetCounter();
 
-    if (wc != lastWriteCounter || rc != lastResetCounter || lpOn != lastLpOn
+    bool connectionChanged = false;
+    for (int layer = 1; layer < numLayers; ++layer)
+        connectionChanged = connectionChanged || proc.isLayerConnected (layer) != lastConnected[layer];
+
+    if (connectionChanged || wc != lastWriteCounter || rc != lastResetCounter || lpOn != lastLpOn
         || (lpOn && std::abs (lpHz - lastLpHz) > 0.01f) || needsRebuild)
     {
         rebuild();
@@ -176,7 +180,17 @@ void ScopeView::rebuild()
         clipRuns.emplace_back (runStart, n - 1);
     windowPeak = peak;
 
-    processInto (src, n, wp, data, lpOn, lpHz);
+    processInto (src, n, wp, layerData[0], lpOn, lpHz);
+
+    for (int layer = 1; layer < numLayers; ++layer)
+    {
+        layerShown[layer] = proc.isLayerConnected (layer);
+        lastConnected[layer] = layerShown[layer];
+        if (layerShown[layer])
+            processInto (proc.getDisplayData (layer), n, wp, layerData[layer], lpOn, lpHz);
+        else
+            layerData[layer].clear();
+    }
 
     if (holdActive && filterChanged)
         processInto (holdRaw.data(), (int) holdRaw.size(), holdWritePos, holdData, lpOn, lpHz);
@@ -433,13 +447,33 @@ void ScopeView::paint (juce::Graphics& g)
         juce::Graphics::ScopedSaveState save (g);
         g.reduceClipRegion (trace.expanded (0.0f, 4.0f).toNearestInt());
 
-        if (holdActive && ! holdData.empty())
-            drawTrace (g, holdData, trace, t.hold.withAlpha (0.85f), gain, 1.6f, 0.0f);
+        auto ui = proc.getUISettings();
 
-        drawTrace (g, data, trace, t.trace, gain, 1.6f, t.glow);
+        if (holdActive && ! holdData.empty())
+            drawTrace (g, holdData, trace, UISettings::holdColour (ui, t).withMultipliedAlpha (0.85f), gain, 1.6f, 0.0f);
+
+        auto drawLayer = [&] (int layer)
+        {
+            if (! layerShown[layer] || layerData[layer].empty() || ! UISettings::layerVisible (ui, layer))
+                return;
+            const auto colour = UISettings::layerColour (ui, layer, t).withMultipliedAlpha (UISettings::layerOpacity (ui, layer));
+            drawTrace (g, layerData[layer], trace, colour, gain, 1.6f, layer == 0 ? t.glow : 0.0f);
+        };
+
+        // By default the sidechain layers sit on top of the main input
+        if (UISettings::flag (ui, UISettings::mainOnTopKey, false))
+        {
+            for (int layer = numLayers - 1; layer >= 1; --layer) drawLayer (layer);
+            drawLayer (0);
+        }
+        else
+        {
+            drawLayer (0);
+            for (int layer = 1; layer < numLayers; ++layer) drawLayer (layer);
+        }
 
         // Play cursor
-        if (proc.isHostPlaying() && windowN > 0)
+        if (proc.isHostPlaying() && windowN > 0 && UISettings::flag (ui, UISettings::showCursorKey, true))
         {
             const double frac = ((double) writePos / (double) windowN - viewStart) / viewSpan;
             if (frac >= 0.0 && frac <= 1.0)
@@ -451,7 +485,9 @@ void ScopeView::paint (juce::Graphics& g)
         }
     }
 
-    drawClipMarkers (g, trace);
+    auto ui = proc.getUISettings();
+    if (UISettings::flag (ui, UISettings::showClipKey, true))
+        drawClipMarkers (g, trace);
 
     // Peak readout (top right of the trace area)
     {
@@ -464,7 +500,7 @@ void ScopeView::paint (juce::Graphics& g)
                     juce::Justification::centredRight);
     }
 
-    if (hovering && ! dragging)
+    if (hovering && ! dragging && UISettings::flag (ui, UISettings::showHoverKey, true))
         drawHover (g, trace, gain);
 
     g.setColour (t.outline);
