@@ -1,0 +1,2 @@
+# Smartscope
+A modern oscilloscope
