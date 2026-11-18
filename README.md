@@ -106,12 +106,13 @@ cmake --build build --config Release --target RenderTest
 
 ### Releases
 
-Every push builds the plugin on GitHub Actions. Pushing a version tag publishes a Release with the zipped plugin, using the matching section of [CHANGELOG.md](CHANGELOG.md) as the release notes:
+Every push builds the plugin on GitHub Actions. To publish a new version:
 
-```sh
-git tag v1.2.0
-git push origin v1.2.0
-```
+1. Bump `VERSION` in `CMakeLists.txt`, for example `project(Smartscope VERSION 1.2.0)`.
+2. Add a `## [1.2.0]` section to [CHANGELOG.md](CHANGELOG.md).
+3. Push to `main`.
+
+The build creates the `v1.2.0` tag and a Release with the zipped plugin, using that changelog section as the release notes.
 
 ### Project layout
 
