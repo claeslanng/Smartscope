@@ -84,9 +84,16 @@ release, update the version on the product page in `claeslanng/claeslanng.github
 
 - **v2: inter-instance overlay.** Show another instance's signal (e.g. the kick track)
   behind this one without sidechain routing, like Scyllascope's overlays.
-- **Real FL Studio screenshots on the product page.** The README's top image is now a
-  real FL Studio screenshot (`docs/images/fl-studio.png`, added by hand, not written by
-  RenderTest). The other README images and the product page still use synthetic renders.
+- **More real FL Studio screenshots.** Two real ones are in, added by hand (RenderTest
+  doesn't write them): `docs/images/fl-studio.png` (README top image) and
+  `docs/images/fullscreen.png` ("Make it big"). The zoom, themes and settings images
+  are still synthetic renders.
+
+## Selling points the owner wants promoted
+
+- **Any size** (760 × 360 up to 3000 × 1600, `setResizeLimits` in PluginEditor.cpp):
+  detach it in FL and give it a whole second monitor, TV or tablet. Keep the README
+  "Make it big" section and the product page's matching section in step with the limits.
 
 ## Verified in FL Studio (2026-11-19, v1.1.0)
 
