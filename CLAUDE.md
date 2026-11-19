@@ -135,21 +135,31 @@ python3 Tests/make_site_images.py /tmp/renders --readme docs/images \
   with the hand exactly as the plugin pans. RenderTest draws the pointer
   (`site::drawPointer`): the arrow when the button is up, a grabbing hand while
   dragging, matching the plugin's `DraggingHandCursor`. Hover readout is off for the video.
-  `resize_frames/` (414 frames, a 1140 × 500 dark canvas with the plugin at 24, 24): the
+  `resize_frames/` (248 frames, about 8 s: the owner wanted it a quiet detail; a 1140 × 500
+  canvas in the product page's own background `#141517`, so the video shows no box, with
+  the plugin at 24, 24 and the page's `#2C2F33` outline): the
   arrow goes to the resize corner, the pointer turns into the diagonal resize arrow (what
   JUCE's resize corner shows), drags from 760 × 360 down to 280 × 140 (the header and
   footer drop controls on the way), up to 1092 × 452, then clicks the corners button,
   brings the controls back from the top-left corner, and drags back to 760 × 360. The
   corners button position assumes the `?` button is showing (`layoutHeader`).
+  `site_fullscreen` (a 1920 × 920 window rendered at **1x**, so the header and controls
+  keep their normal size and the scope fills the rest, as on a big monitor; one bar; the
+  kick in **sidechain 2**, its default cyan, with the silent sidechain 1 hidden).
+  `makeProcessor`'s `kickSidechain` argument picks the kick's input.
+- **Videos** are encoded as BT.709 and tagged, so browsers show the exact colors (untagged,
+  the resize loop's background drifted 1-2 levels from the page). Posters are lossy WebP.
 - **Why the loop goes back and forth:** the ruler labels are positions in the window, so a
   one-way pan of one beat would jump at the seam, even though every kick is identical.
   Zoom x27 was too far in for a drag: one beat would be more than three display widths.
 - **README** gets `main.png`, `zoom.png`, `themes.png` (2 × 2 grid) and `settings.png`.
   `fl-studio.png` (two windows in FL) and `fullscreen.png` (a second monitor) are the
-  owner's hand captures from 1.1 and stay as they are.
+  owner's hand captures from 1.1 and stay as they are. The website's `fullscreen.webp` is
+  rendered (`site_fullscreen`).
 - **Website** gets `main.webp`, `zoom.webp`, `theme-*.webp` (1140 px), `settings.webp`
   (shown at half its pixel size), `main-share.jpg` (1200 px), `drag-loop.mp4` + poster
-  (1280 × 440) and `resize-loop.mp4` + poster (1600 × 702). The site's captions name what's in the images (layer colors per theme,
+  (1280 × 440), `resize-loop.mp4` + poster (1600 × 702) and `fullscreen.webp`
+  (1920 × 920). The site's captions name what's in the images (layer colors per theme,
   Zoom x68 / 14 ms, x5 / two bars / the hand dragging): change them if the renders change.
 
 ## Selling points the owner wants promoted

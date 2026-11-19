@@ -20,8 +20,10 @@ Website (--site), as the product page expects:
     settings.webp                   lossless, 2x (show it at half its pixel size)
     drag-loop.mp4                   muted H.264 loop, 1280 x 440 (the hand dragging the view)
     drag-loop-poster.webp           its first frame
-    resize-loop.mp4                 muted H.264 loop, 1600 x 702 (resizing, scope only)
+    resize-loop.mp4                 muted H.264 loop, 1600 x 702 (resizing, scope only), on the
+                                    page's background so it shows no box
     resize-loop-poster.webp         its first frame
+    fullscreen.webp                 lossless, 1920 x 920 (rendered at 1x, like a big monitor)
 """
 
 import argparse
@@ -75,15 +77,19 @@ def write_video(frames_dir: Path, prefix: str, out_stem: Path, size) -> None:
     if not frames:
         print(f"No frames in {frames_dir}: skipped {out_stem.name}")
         return
+    # Lossy poster: it loads with the page before anything plays (lossless was ~3x bigger)
     Image.open(frames[0]).convert("RGB").resize(size, Image.LANCZOS).save(
-        out_stem.with_name(out_stem.name + "-poster.webp"), lossless=True, method=6)
+        out_stem.with_name(out_stem.name + "-poster.webp"), quality=88, method=6, use_sharp_yuv=True)
     if not shutil.which("ffmpeg"):
         print(f"ffmpeg not found: skipped {out_stem.name}.mp4")
         return
     subprocess.run([
         "ffmpeg", "-y", "-loglevel", "error",
         "-framerate", str(VIDEO_FPS), "-i", str(frames_dir / f"{prefix}_%04d.png"),
-        "-vf", f"scale={size[0]}:{size[1]}:flags=lanczos,format=yuv420p",
+        # BT.709 conversion, tagged as such, so browsers show the exact colors (untagged
+        # video drifted 1-2 levels, enough to show a faint box around the resize loop)
+        "-vf", f"scale={size[0]}:{size[1]}:flags=lanczos:out_color_matrix=bt709:out_range=tv,format=yuv420p",
+        "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-movflags", "+faststart", "-an", str(out_stem.with_name(out_stem.name + ".mp4")),
     ], check=True)
@@ -97,6 +103,7 @@ def write_site(renders: Path, out: Path) -> None:
     share.save(out / "main-share.jpg", quality=90, optimize=True, progressive=True)
     load(renders, "site_zoom").save(out / "zoom.webp", lossless=True, method=6)
     load(renders, "site_settings").save(out / "settings.webp", lossless=True, method=6)
+    load(renders, "site_fullscreen").save(out / "fullscreen.webp", lossless=True, method=6)
     for t in THEMES:
         theme_tile(renders, t).save(out / f"theme-{t}.webp", lossless=True, method=6)
 

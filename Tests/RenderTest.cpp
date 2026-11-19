@@ -212,7 +212,7 @@ namespace site
     constexpr double bpm = 128.0;
     constexpr float  scale = 2.0f;                 // 2x for sharp images on high-density screens
     constexpr int    width = 1140, height = 392;   // 2280 x 784 px at 2x
-    constexpr int    lengthHalfBar = 3, lengthTwoBars = 5;
+    constexpr int    lengthHalfBar = 3, lengthOneBar = 4, lengthTwoBars = 5;
 
     struct Audio
     {
@@ -236,11 +236,12 @@ namespace site
     /** A processor with sidechain 1 on, fed the whole 4-bar loop while "playing" at 128 BPM.
         Stopping exactly at the end of bar 4 leaves the last full window in the buffer. */
     static std::unique_ptr<SmartscopeAudioProcessor> makeProcessor (const Audio& a, FakePlayHead& ph, int lengthIndex,
-                                                                    bool withAudio = true)
+                                                                    bool withAudio = true, int kickSidechain = 1)
     {
         auto p = std::make_unique<SmartscopeAudioProcessor>();
         auto layout = p->getBusesLayout();
-        layout.inputBuses.getReference (1) = juce::AudioChannelSet::stereo();
+        for (int bus = 1; bus <= kickSidechain; ++bus)   // sidechains up to the kick's are connected
+            layout.inputBuses.getReference (bus) = juce::AudioChannelSet::stereo();
         p->setBusesLayout (layout);
         p->setPlayHead (&ph);
         constexpr int block = 512;
@@ -254,18 +255,19 @@ namespace site
         ph.playing = true;
         const double spb = a.sampleRate * 60.0 / bpm;
         const int total = withAudio ? a.bass.getNumSamples() : block;
-        juce::AudioBuffer<float> buf (4, block);
+        const int channels = 2 + 2 * kickSidechain;
+        juce::AudioBuffer<float> buf (channels, block);
         juce::MidiBuffer midi;
         for (int s0 = 0; s0 < total; s0 += block)
         {
             const int n = juce::jmin (block, total - s0);
-            buf.setSize (4, n, false, false, true);
+            buf.setSize (channels, n, false, false, true);
             buf.clear();
             if (withAudio)
                 for (int ch = 0; ch < 2; ++ch)
                 {
                     buf.copyFrom (ch,     0, a.bass, ch, s0, n);   // main input
-                    buf.copyFrom (ch + 2, 0, a.kick, ch, s0, n);   // sidechain 1
+                    buf.copyFrom (ch + 2 * kickSidechain, 0, a.kick, ch, s0, n);   // the kick's sidechain
                 }
             ph.ppq = (double) s0 / spb;
             p->processBlock (buf, midi);
@@ -455,6 +457,24 @@ namespace site
             p->setPlayHead (nullptr);
         }
 
+        // Filling a second monitor ("Make it as big as you like"): a 1920 x 920 window, rendered
+        // at 1x so the header and controls keep their normal size and the scope fills the rest,
+        // as on a real monitor. The kick goes into sidechain 2 this time (its default cyan),
+        // and the window is one bar long.
+        {
+            auto p = makeProcessor (a, ph, lengthOneBar, true, 2);
+            p->getUISettings().setProperty (UISettings::showHoverKey, false, nullptr);
+            p->getUISettings().setProperty (UISettings::visibleKey (1), false, nullptr);   // hide the silent sidechain 1
+            auto e = makeEditor (*p, 1920, 920);
+            auto img = e->createComponentSnapshot (e->getLocalBounds(), true, 1.0f);
+            auto out = file ("site_fullscreen");
+            out.deleteFile();
+            juce::FileOutputStream os (out);
+            juce::PNGImageFormat().writeImageToStream (img, os);
+            e.reset();
+            p->setPlayHead (nullptr);
+        }
+
         // Frames for the demo loop, made to look like someone using it. The plugin shows the
         // normal arrow over the display and a grabbing hand while dragging, so the video does
         // too. At about Zoom x5 on a two-bar window, one beat is 62 % of the display: the arrow
@@ -538,8 +558,9 @@ namespace site
             p->setPlayHead (nullptr);
         }
 
-        // Frames for the resize loop ("Make it as big as you like"). The plugin sits on a dark
-        // background at its normal size; the pointer drags the resize corner down to a strip
+        // Frames for the resize loop ("Make it as big as you like"). The plugin sits on the
+        // product page's own background (#141517, so the video has no visible box) at its
+        // normal size; the pointer drags the resize corner down to a strip
         // (watch the header and footer make room), then up to fill the frame, clicks the
         // corners button (scope only), brings the controls back from the top-left corner, and
         // drags back to the normal size, so the loop has no seam.
@@ -578,10 +599,10 @@ namespace site
                 juce::Image canvas (juce::Image::ARGB, (int) (canvasW * scale), (int) (canvasH * scale), true);
                 juce::Graphics g (canvas);
                 g.addTransform (juce::AffineTransform::scale (scale));
-                g.fillAll (juce::Colour (0xff2a3238));   // a dark workspace, like FL Studio's
+                g.fillAll (juce::Colour (0xff141517));   // the product page's background
                 auto shot = e->createComponentSnapshot (e->getLocalBounds(), true, scale);
                 g.drawImage (shot, juce::Rectangle<float> (origin.x, origin.y, (float) size.x, (float) size.y));
-                g.setColour (juce::Colour (0xff11151a));
+                g.setColour (juce::Colour (0xff2c2f33));   // the page's 1 px outline around screenshots
                 g.drawRect (juce::Rectangle<float> (origin.x - 1.0f, origin.y - 1.0f, (float) size.x + 2.0f, (float) size.y + 2.0f), 1.0f);
                 drawPointer (g, origin + pointer, kind);
                 auto out = framesDir.getChildFile ("site_resize_" + juce::String (index++).paddedLeft ('0', 4) + ".png");
@@ -628,25 +649,26 @@ namespace site
             const juce::Point<float> exitButton { 22.0f, 10.0f };
             const juce::Point<float> restSpot = corner (startSize) + juce::Point<float> (-70.0f, -60.0f);
 
+            // About 8 seconds at 30 fps: short enough to stay a quiet detail on the page
             pointer = restSpot;
-            hold (18);
-            moveTo (corner (startSize), 16);
-            kind = Pointer::resize;          hold (5);
-            resizeTo (smallSize, 58);        hold (20);
-            resizeTo (bigSize, 70);
-            kind = Pointer::arrow;           hold (12);
-            moveTo (scopeOnlyButton (bigSize), 22);
-            hold (4);
-            e->setScopeOnly (true);          hold (36);
-            moveTo (exitButton, 24, true);
-            hold (6);
-            e->setScopeOnly (false);         hold (12);
-            moveTo (corner (bigSize), 24);
-            kind = Pointer::resize;          hold (5);
-            resizeTo (startSize, 52);
+            hold (10);
+            moveTo (corner (startSize), 12);
+            kind = Pointer::resize;          hold (3);
+            resizeTo (smallSize, 34);        hold (10);
+            resizeTo (bigSize, 40);
             kind = Pointer::arrow;           hold (6);
-            moveTo (restSpot, 16);
-            hold (8);
+            moveTo (scopeOnlyButton (bigSize), 14);
+            hold (3);
+            e->setScopeOnly (true);          hold (20);
+            moveTo (exitButton, 16, true);
+            hold (4);
+            e->setScopeOnly (false);         hold (6);
+            moveTo (corner (bigSize), 16);
+            kind = Pointer::resize;          hold (3);
+            resizeTo (startSize, 32);
+            kind = Pointer::arrow;           hold (4);
+            moveTo (restSpot, 10);
+            hold (5);
 
             std::cout << "  " << index << " resize frames at 30 fps" << std::endl;
             e.reset();
