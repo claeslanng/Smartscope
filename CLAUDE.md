@@ -135,6 +135,12 @@ python3 Tests/make_site_images.py /tmp/renders --readme docs/images \
   with the hand exactly as the plugin pans. RenderTest draws the pointer
   (`site::drawPointer`): the arrow when the button is up, a grabbing hand while
   dragging, matching the plugin's `DraggingHandCursor`. Hover readout is off for the video.
+  `resize_frames/` (414 frames, a 1140 × 500 dark canvas with the plugin at 24, 24): the
+  arrow goes to the resize corner, the pointer turns into the diagonal resize arrow (what
+  JUCE's resize corner shows), drags from 760 × 360 down to 280 × 140 (the header and
+  footer drop controls on the way), up to 1092 × 452, then clicks the corners button,
+  brings the controls back from the top-left corner, and drags back to 760 × 360. The
+  corners button position assumes the `?` button is showing (`layoutHeader`).
 - **Why the loop goes back and forth:** the ruler labels are positions in the window, so a
   one-way pan of one beat would jump at the seam, even though every kick is identical.
   Zoom x27 was too far in for a drag: one beat would be more than three display widths.
@@ -142,8 +148,8 @@ python3 Tests/make_site_images.py /tmp/renders --readme docs/images \
   `fl-studio.png` (two windows in FL) and `fullscreen.png` (a second monitor) are the
   owner's hand captures from 1.1 and stay as they are.
 - **Website** gets `main.webp`, `zoom.webp`, `theme-*.webp` (1140 px), `settings.webp`
-  (shown at half its pixel size), `main-share.jpg` (1200 px) and `drag-loop.mp4` + poster
-  (1280 × 440). The site's captions name what's in the images (layer colors per theme,
+  (shown at half its pixel size), `main-share.jpg` (1200 px), `drag-loop.mp4` + poster
+  (1280 × 440) and `resize-loop.mp4` + poster (1600 × 702). The site's captions name what's in the images (layer colors per theme,
   Zoom x68 / 14 ms, x5 / two bars / the hand dragging): change them if the renders change.
 
 ## Selling points the owner wants promoted
