@@ -129,17 +129,22 @@ python3 Tests/make_site_images.py /tmp/renders --readme docs/images \
   Graphite defaults, Midnight white bass + `#40D0FF` kick, Phosphor `#6CFF8A` bass +
   `#FFC23D` kick, Daylight default near-black bass + `#2563EB` kick), `site_settings`
   (just the card, no audio behind it, default display options), and `drag_frames/`
-  (192 frames at 30 fps: Zoom x27 on a two-bar window, sliding one beat to the next kick
-  and back, eased, with holds).
+  (172 frames at 30 fps, Zoom x5 on a two-bar window, where one beat is 62 % of the
+  display: the arrow rests on the next kick, turns into the grabbing hand, pulls the kick
+  one beat to where the first one was, lets go, and later drags it back). The view moves
+  with the hand exactly as the plugin pans. RenderTest draws the pointer
+  (`site::drawPointer`): the arrow when the button is up, a grabbing hand while
+  dragging, matching the plugin's `DraggingHandCursor`. Hover readout is off for the video.
 - **Why the loop goes back and forth:** the ruler labels are positions in the window, so a
   one-way pan of one beat would jump at the seam, even though every kick is identical.
+  Zoom x27 was too far in for a drag: one beat would be more than three display widths.
 - **README** gets `main.png`, `zoom.png`, `themes.png` (2 × 2 grid) and `settings.png`.
   `fl-studio.png` (two windows in FL) and `fullscreen.png` (a second monitor) are the
   owner's hand captures from 1.1 and stay as they are.
 - **Website** gets `main.webp`, `zoom.webp`, `theme-*.webp` (1140 px), `settings.webp`
   (shown at half its pixel size), `main-share.jpg` (1200 px) and `drag-loop.mp4` + poster
   (1280 × 440). The site's captions name what's in the images (layer colors per theme,
-  Zoom x68 / 14 ms, x27 / two bars): change them if the renders change.
+  Zoom x68 / 14 ms, x5 / two bars / the hand dragging): change them if the renders change.
 
 ## Selling points the owner wants promoted
 

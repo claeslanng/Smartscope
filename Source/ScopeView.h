@@ -42,6 +42,7 @@ public:
     void setViewForTest (double start, double span) { viewStart = start; viewSpan = span; clampView(); notifyViewChanged(); }
     void setHoverForTest (juce::Point<float> p)     { hoverPos = p; hovering = true; }
     void refreshForTest()                           { rebuild(); }
+    juce::Rectangle<float> getTraceAreaForTest() const { return getTraceArea(); }
    #endif
 
 private:
