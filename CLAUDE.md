@@ -98,10 +98,73 @@ release, update the version on the product page in `claeslanng/claeslanng.github
 
 - **v2: inter-instance overlay.** Show another instance's signal (e.g. the kick track)
   behind this one without sidechain routing, like Scyllascope's overlays.
-- **More real FL Studio screenshots.** Two real ones are in, added by hand (RenderTest
-  doesn't write them): `docs/images/fl-studio.png` (README top image) and
-  `docs/images/fullscreen.png` ("Make it big"). The zoom, themes and settings images
-  are still synthetic renders.
+- **Real screenshots.** The product page now uses real FL Studio captures only (since
+  2026-11-19, done in the website conversation): `main.webp`, `zoom.webp`, four
+  `theme-*.webp`, `settings.webp`, plus `main-share.jpg` for social previews and a short
+  demo video (`drag-loop.mp4`). They're lossless WebP at full size, in
+  `assets/img/smartscope/` in the site repo, framed by a 1 px outline instead of soft
+  shadows (the owner found those low quality). In this repo, the README's
+  `docs/images/fl-studio.png` (top image) and `docs/images/fullscreen.png` ("Make it big")
+  are real captures added by hand. `zoom.png`, `themes.png` and `settings.png` are still
+  RenderTest renders fed with made-up audio. The next item replaces both kinds.
+
+- **RenderTest renders the website screenshots (after 1.2.0).** The owner doesn't want
+  to capture everything by hand for every release. **Don't start this until the 1.2.0
+  features are finished** (the owner's call). Full plan:
+  `smartscope-website-handoff.md` from the website conversation, and the site repo's
+  CLAUDE.md.
+  - **Test audio:** on the **`screenshot-audio`** branch, in `Tests/audio/` (not merged;
+    merge it first when this starts). Both files are 4 bars at 128 BPM (7.5 s), 44.1 kHz
+    stereo, and start on the downbeat at the same sample. A README there says they're
+    under the repo's AGPLv3, and the owner knows the repo is public.
+    - `Smartscope Audio-Visual Test - Kick 1.wav`: one kick per beat, about 175 ms long,
+      16-bit. It goes into **sidechain 1**.
+    - `Smartscope Audio-Visual Test - Bass 1.wav`: the bass with sidechain ducking
+      already applied, coming back about 4 ms after each kick ends. 24-bit. It goes into
+      the **main input**. (This is the second, tighter take.)
+  - **How:** load both WAVs in RenderTest and run them through the processor with the
+    fake playhead playing at 128 BPM, so the window buffers fill as in FL. Render at
+    **2× scale** (`createComponentSnapshot (bounds, true, 2.0f)`) at a window size that
+    gives about **2280 × 784 px**, the shape of the current site images. Play cursor
+    off; there's no mouse, so there's no hover readout. Layer opacity at 100%.
+  - **Keep it in the RenderTest target.** The shipping VST3 gets no hidden mode, and its
+    audio path isn't touched.
+  - **Output:** lossless PNGs in a folder of their own (e.g. `docs/images/site/`) or as
+    an Actions artifact. The website side converts them to WebP and swaps them in.
+
+    | File | Settings |
+    |---|---|
+    | `site_main.png` | Graphite, length 1/2, playing, SC 1 kick orange, main bass light gray |
+    | `site_zoom.png` | The first ~14 ms of a kick, about Zoom x68 |
+    | `site_theme_graphite.png` | Orange kick, light gray bass (the defaults) |
+    | `site_theme_midnight.png` | Cyan kick (about `#40D0FF`), white bass |
+    | `site_theme_phosphor.png` | Amber kick (about `#FFC23D`), phosphor-green bass (about `#6CFF8A`) |
+    | `site_theme_daylight.png` | Near-black bass, deep blue (`#2563EB`) or red (`#E5484D`) kick; pale colors get lost on the light background |
+    | `site_settings.png` | Settings open, Graphite, **no audio behind it**, 2× so the text is sharp |
+    | `site_drag_####.png` | Frames for the demo video (below) |
+
+    The four theme shots use the same audio, view and position, so only the look
+    changes. The site names the colors in the captions, so people know the colors are
+    chosen separately from the theme.
+  - **Demo video frames:** about Zoom x27 on a two-bar window, playback stopped, a
+    scripted smooth pan of exactly **one beat** (468.75 ms at 128 BPM). Every beat has the
+    same kick, so the last frame matches the first and the video loops without a seam
+    (the current one needed a blend). 30 or 60 fps at 2×. The website side encodes a
+    muted H.264 MP4.
+  - **Page text is tied to the images.** If renders show something different, the site
+    text has to change too: the main caption (kick on SC 1 orange over the bass gray,
+    half a bar), the zoom text ("first 14 ms… zoomed in 68 times", "the bass (white)
+    hasn't started yet"), the video text (x27, two bars, stopped, kick to kick), and the
+    features list.
+  - **Later, optional:** a GitHub Actions job runs RenderTest on each release and pushes
+    the images (and the version number) into `claeslanng/claeslanng.github.io`. It needs a
+    token or deploy key with write access there, added by the owner as a repo secret.
+  - **Until then, hand captures:** enlarge the window to about 2000 px wide (or Windows
+    scaling 200%), press Hold, turn off the play cursor, keep the mouse out, and capture
+    just the plugin without FL's frame. Send PNGs attached in the chat, not Gyazo links.
+    For video, use the Snipping Tool's video mode at full size, starting and ending on the
+    same view.
+  - **Same approach later for PitchScope**, whose site images are small 840 px JPEGs.
 
 ## Selling points the owner wants promoted
 
