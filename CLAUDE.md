@@ -84,8 +84,9 @@ release, update the version on the product page in `claeslanng/claeslanng.github
 
 - **v2: inter-instance overlay.** Show another instance's signal (e.g. the kick track)
   behind this one without sidechain routing, like Scyllascope's overlays.
-- **Real FL Studio screenshots** or a short screen recording for the README and the
-  product page (the current images are synthetic test renders).
+- **Real FL Studio screenshots on the product page.** The README's top image is now a
+  real FL Studio screenshot (`docs/images/fl-studio.png`, added by hand, not written by
+  RenderTest). The other README images and the product page still use synthetic renders.
 
 ## Verified in FL Studio (2026-11-19, v1.1.0)
 
