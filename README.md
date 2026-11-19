@@ -15,7 +15,7 @@
 
 <p align="center">
   <img src="docs/images/fl-studio.png" width="900" alt="Two Smartscope windows in FL Studio: a drums track with kick, clap and perc on three sidechain layers, and a bass track with the kick on sidechain 2">
-  <br><sub>In FL Studio. Top: drums, with the kick (orange), clap (blue) and a perc hit (purple) on sidechains 1 to 3. Bottom: the bass (grey) with the kick on sidechain 2 (blue).</sub>
+  <br><sub>In FL Studio. Top: drums, with the kick (orange), clap (blue) and a perc hit (purple) on sidechains 1 to 3. Bottom: the bass (gray) with the kick on sidechain 2 (blue).</sub>
 </p>
 
 ---
@@ -49,7 +49,7 @@ The plugin passes audio through unchanged, so it's safe on any track or on the m
 
 <p align="center">
   <img src="docs/images/zoom.png" width="900" alt="Zoomed in: the bass starts about 18 ms after the kick">
-  <br><sub>Zoomed in: the bass (grey) starts about 18 ms after the kick (orange).</sub>
+  <br><sub>Zoomed in: the bass (gray) starts about 18 ms after the kick (orange).</sub>
 </p>
 
 ## Make it big
@@ -61,8 +61,8 @@ For the cleanest picture, click the **corners button** in the header (next to **
 It also goes small, down to 240 × 110. As the window shrinks, the status text, the logo and the less-used controls step aside, the layer chips become colored dots, and below about 760 × 350 Settings closes (the gear is grayed out until there's room again).
 
 <p align="center">
-  <img src="docs/images/fullscreen.png" width="900" alt="Smartscope filling a second monitor in FL Studio, showing the kick (blue) over the bass (grey)">
-  <br><sub>Smartscope filling a second monitor: the kick on sidechain 2 (blue) over the bass (grey).</sub>
+  <img src="docs/images/fullscreen.png" width="900" alt="Smartscope filling a second monitor in FL Studio, showing the kick (blue) over the bass (gray)">
+  <br><sub>Smartscope filling a second monitor: the kick on sidechain 2 (blue) over the bass (gray).</sub>
 </p>
 
 ## Sidechain layers in FL Studio
