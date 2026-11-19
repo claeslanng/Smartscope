@@ -48,6 +48,9 @@ public:
     /** Give sidechains 1-3 new random colours (the dice button). */
     void randomiseSidechainColours();
 
+    /** The settings card, in this component's coordinates (for screenshots). */
+    juce::Rectangle<int> getCardBounds() const noexcept { return panelBounds; }
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override {}   // swallow clicks so the scope underneath doesn't react

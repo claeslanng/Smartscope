@@ -67,7 +67,8 @@ if(SMARTSCOPE_BUILD_TESTS)
     target_include_directories(RenderTest PRIVATE Source)
     target_compile_definitions(RenderTest PRIVATE
         JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 SMARTSCOPE_TEST_BUILD=1
-        "SMARTSCOPE_VERSION=\"${PROJECT_VERSION}\"")
+        "SMARTSCOPE_VERSION=\"${PROJECT_VERSION}\""
+        "SMARTSCOPE_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\"")
     target_link_libraries(RenderTest PRIVATE
         juce::juce_audio_utils juce::juce_dsp juce::juce_gui_extra
         juce::juce_recommended_config_flags)

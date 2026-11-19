@@ -60,7 +60,10 @@ Source/PluginEditor.*     window, header (logo, status, layer chips, ?, gear), f
 Source/SettingsPanel.*    settings overlay and color pickers
 Source/Themes.h           color themes
 Source/UISettings.h       saved display preferences (colors, opacity, visibility, toggles)
-Tests/RenderTest.cpp      offline sync checks with a fake host + PNG renders of the UI
+Tests/RenderTest.cpp      offline sync checks with a fake host + PNG renders of the UI;
+                          `--site <dir>` renders the README/website screenshots
+Tests/make_site_images.py turns those renders into README PNGs and website WebP/JPEG/MP4
+Tests/audio/              the owner's kick and bass for the screenshots (AGPLv3, see README there)
 ```
 
 The audio thread writes into preallocated buffers (`maxDisplaySamples = 1 << 21` per
@@ -78,8 +81,7 @@ cd /tmp && ./path/to/build/RenderTest_artefacts/Release/RenderTest   # writes re
 ```
 
 Look at the renders yourself before reporting UI changes, and send the user the relevant
-PNGs. RenderTest also writes the README screenshots (`render_docs_*`), which belong in
-`docs/images/`.
+PNGs.
 
 Windows is only built by GitHub Actions (`.github/workflows/build-windows.yml`). MSVC is
 stricter than GCC. A known trap: capturing `this` inside a nested lambda's init-capture.
@@ -92,79 +94,52 @@ bump `project(Smartscope VERSION x.y.z)` in `CMakeLists.txt`, add a `## [x.y.z]`
 to `CHANGELOG.md`, and push to `main`. The workflow creates the `vX.Y.Z` tag and a GitHub
 Release with `Smartscope-vX.Y.Z-Windows-VST3.zip`, using that changelog section as the
 notes. Cloud sessions can't push tags, which is why the workflow creates them. After a
-release, update the version on the product page in `claeslanng/claeslanng.github.io`.
+release, update the version on the product page in `claeslanng/claeslanng.github.io`,
+and if the UI changed, rerender the screenshots (see Screenshots).
 
 ## Open ideas (not started)
 
 - **v2: inter-instance overlay.** Show another instance's signal (e.g. the kick track)
   behind this one without sidechain routing, like Scyllascope's overlays.
-- **Real screenshots.** The product page now uses real FL Studio captures only (since
-  2026-11-19, done in the website conversation): `main.webp`, `zoom.webp`, four
-  `theme-*.webp`, `settings.webp`, plus `main-share.jpg` for social previews and a short
-  demo video (`drag-loop.mp4`). They're lossless WebP at full size, in
-  `assets/img/smartscope/` in the site repo, framed by a 1 px outline instead of soft
-  shadows (the owner found those low quality). In this repo, the README's
-  `docs/images/fl-studio.png` (top image) and `docs/images/fullscreen.png` ("Make it big")
-  are real captures added by hand. `zoom.png`, `themes.png` and `settings.png` are still
-  RenderTest renders fed with made-up audio. The next item replaces both kinds.
+- **Automatic screenshots on release (optional, not set up).** A GitHub Actions job
+  could run `RenderTest --site` and `make_site_images.py` on each release and push the
+  images (and the version number) into `claeslanng/claeslanng.github.io`. It needs a token
+  or deploy key with write access there, added by the owner as a secret in this repo.
+- **PitchScope** could get the same rendered screenshots (its site images are small
+  840 px JPEGs).
 
-- **RenderTest renders the website screenshots (after 1.2.0).** The owner doesn't want
-  to capture everything by hand for every release. **Don't start this until the 1.2.0
-  features are finished** (the owner's call). Full plan:
-  `smartscope-website-handoff.md` from the website conversation, and the site repo's
-  CLAUDE.md.
-  - **Test audio:** on the **`screenshot-audio`** branch, in `Tests/audio/` (not merged;
-    merge it first when this starts). Both files are 4 bars at 128 BPM (7.5 s), 44.1 kHz
-    stereo, and start on the downbeat at the same sample. A README there says they're
-    under the repo's AGPLv3, and the owner knows the repo is public.
-    - `Smartscope Audio-Visual Test - Kick 1.wav`: one kick per beat, about 175 ms long,
-      16-bit. It goes into **sidechain 1**.
-    - `Smartscope Audio-Visual Test - Bass 1.wav`: the bass with sidechain ducking
-      already applied, coming back about 4 ms after each kick ends. 24-bit. It goes into
-      the **main input**. (This is the second, tighter take.)
-  - **How:** load both WAVs in RenderTest and run them through the processor with the
-    fake playhead playing at 128 BPM, so the window buffers fill as in FL. Render at
-    **2× scale** (`createComponentSnapshot (bounds, true, 2.0f)`) at a window size that
-    gives about **2280 × 784 px**, the shape of the current site images. Play cursor
-    off; there's no mouse, so there's no hover readout. Layer opacity at 100%.
-  - **Keep it in the RenderTest target.** The shipping VST3 gets no hidden mode, and its
-    audio path isn't touched.
-  - **Output:** lossless PNGs in a folder of their own (e.g. `docs/images/site/`) or as
-    an Actions artifact. The website side converts them to WebP and swaps them in.
+## Screenshots (README and product page)
 
-    | File | Settings |
-    |---|---|
-    | `site_main.png` | Graphite, length 1/2, playing, SC 1 kick orange, main bass light gray |
-    | `site_zoom.png` | The first ~14 ms of a kick, about Zoom x68 |
-    | `site_theme_graphite.png` | Orange kick, light gray bass (the defaults) |
-    | `site_theme_midnight.png` | Cyan kick (about `#40D0FF`), white bass |
-    | `site_theme_phosphor.png` | Amber kick (about `#FFC23D`), phosphor-green bass (about `#6CFF8A`) |
-    | `site_theme_daylight.png` | Near-black bass, deep blue (`#2563EB`) or red (`#E5484D`) kick; pale colors get lost on the light background |
-    | `site_settings.png` | Settings open, Graphite, **no audio behind it**, 2× so the text is sharp |
-    | `site_drag_####.png` | Frames for the demo video (below) |
+All of them are rendered, not captured (since 1.2.0), so they never need a hand capture
+for a release. After a UI change, rerender and publish both:
 
-    The four theme shots use the same audio, view and position, so only the look
-    changes. The site names the colors in the captions, so people know the colors are
-    chosen separately from the theme.
-  - **Demo video frames:** about Zoom x27 on a two-bar window, playback stopped, a
-    scripted smooth pan of exactly **one beat** (468.75 ms at 128 BPM). Every beat has the
-    same kick, so the last frame matches the first and the video loops without a seam
-    (the current one needed a blend). 30 or 60 fps at 2×. The website side encodes a
-    muted H.264 MP4.
-  - **Page text is tied to the images.** If renders show something different, the site
-    text has to change too: the main caption (kick on SC 1 orange over the bass gray,
-    half a bar), the zoom text ("first 14 ms… zoomed in 68 times", "the bass (white)
-    hasn't started yet"), the video text (x27, two bars, stopped, kick to kick), and the
-    features list.
-  - **Later, optional:** a GitHub Actions job runs RenderTest on each release and pushes
-    the images (and the version number) into `claeslanng/claeslanng.github.io`. It needs a
-    token or deploy key with write access there, added by the owner as a repo secret.
-  - **Until then, hand captures:** enlarge the window to about 2000 px wide (or Windows
-    scaling 200%), press Hold, turn off the play cursor, keep the mouse out, and capture
-    just the plugin without FL's frame. Send PNGs attached in the chat, not Gyazo links.
-    For video, use the Snipping Tool's video mode at full size, starting and ending on the
-    same view.
-  - **Same approach later for PitchScope**, whose site images are small 840 px JPEGs.
+```bash
+build/RenderTest_artefacts/Release/RenderTest --site /tmp/renders
+python3 Tests/make_site_images.py /tmp/renders --readme docs/images \
+    --site ../claeslanng.github.io/assets/img/smartscope
+```
+
+- **Input:** the owner's real audio in `Tests/audio/`, 4 bars at 128 BPM, 44.1 kHz: the
+  kick goes into **sidechain 1**, the ducked bass into the **main input**. The fake playhead
+  plays the whole loop, so the buffers fill as in FL. Play cursor off, no mouse (no hover
+  readout), layer opacity 100%, 2x scale (`createComponentSnapshot (…, true, 2.0f)`).
+  The screenshot mode lives only in RenderTest: the plugin has no hidden mode.
+- **Output (`--site`):** `site_main` (Graphite, 1/2 bar, 1140 × 392 → 2280 × 784 px),
+  `site_zoom` (first ~14 ms of a kick, Zoom x68), `site_theme_*` (same audio and view;
+  Graphite defaults, Midnight white bass + `#40D0FF` kick, Phosphor `#6CFF8A` bass +
+  `#FFC23D` kick, Daylight default near-black bass + `#2563EB` kick), `site_settings`
+  (just the card, no audio behind it, default display options), and `drag_frames/`
+  (192 frames at 30 fps: Zoom x27 on a two-bar window, sliding one beat to the next kick
+  and back, eased, with holds).
+- **Why the loop goes back and forth:** the ruler labels are positions in the window, so a
+  one-way pan of one beat would jump at the seam, even though every kick is identical.
+- **README** gets `main.png`, `zoom.png`, `themes.png` (2 × 2 grid) and `settings.png`.
+  `fl-studio.png` (two windows in FL) and `fullscreen.png` (a second monitor) are the
+  owner's hand captures from 1.1 and stay as they are.
+- **Website** gets `main.webp`, `zoom.webp`, `theme-*.webp` (1140 px), `settings.webp`
+  (shown at half its pixel size), `main-share.jpg` (1200 px) and `drag-loop.mp4` + poster
+  (1280 × 440). The site's captions name what's in the images (layer colors per theme,
+  Zoom x68 / 14 ms, x27 / two bars): change them if the renders change.
 
 ## Selling points the owner wants promoted
 
