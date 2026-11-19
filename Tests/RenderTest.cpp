@@ -559,6 +559,36 @@ int main()
         p3.setPlayHead (nullptr);
     }
 
+    //--------------------------------------------------------------------------
+    std::cout << "Window size when the plugin opens" << std::endl;
+    {
+        SmartscopeAudioProcessor p5;
+        std::unique_ptr<juce::AudioProcessorEditor> e5 (p5.createEditor());
+        check (e5->getWidth() == 760 && e5->getHeight() == 360,
+               "a new instance opens at 760 x 360 (got " + juce::String (e5->getWidth()) + " x " + juce::String (e5->getHeight()) + ")");
+
+        e5->setSize (1234, 567);
+        e5.reset();
+        e5.reset (p5.createEditor());
+        check (e5->getWidth() == 1234 && e5->getHeight() == 567,
+               "reopening the window keeps its size (got " + juce::String (e5->getWidth()) + " x " + juce::String (e5->getHeight()) + ")");
+        e5.reset();
+
+        juce::MemoryBlock state;
+        p5.getStateInformation (state);
+        SmartscopeAudioProcessor p6;
+        p6.setStateInformation (state.getData(), (int) state.getSize());
+        std::unique_ptr<juce::AudioProcessorEditor> e6 (p6.createEditor());
+        check (e6->getWidth() == 1234 && e6->getHeight() == 567,
+               "a saved project reopens at its saved size (got " + juce::String (e6->getWidth()) + " x " + juce::String (e6->getHeight()) + ")");
+        e6.reset();
+
+        SmartscopeAudioProcessor p7;
+        p7.editorWidth = 100000; p7.editorHeight = 1;   // nonsense in a saved project
+        std::unique_ptr<juce::AudioProcessorEditor> e7 (p7.createEditor());
+        check (e7->getWidth() == 7680 && e7->getHeight() == 110, "an out-of-range saved size is clamped to the limits");
+    }
+
     std::cout << (failures == 0 ? "ALL CHECKS PASSED" : "SOME CHECKS FAILED") << std::endl;
     return failures == 0 ? 0 : 1;
 }

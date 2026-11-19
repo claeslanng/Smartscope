@@ -109,6 +109,7 @@ private:
     IconButton scopeOnlyButton { IconButton::Icon::expand };
     IconButton exitScopeOnly   { IconButton::Icon::collapse };   // floats over the scope in scope-only view
     juce::uint32 lastMouseMoveMs = 0;
+    bool sizeRestored = false;   // true once the saved window size has been applied
     std::unique_ptr<LayerChip> chips[numLayers];
     std::unique_ptr<SettingsPanel> settingsPanel;
 

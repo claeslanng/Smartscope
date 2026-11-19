@@ -13,6 +13,9 @@
 - Every layer now starts at 100% opacity (sidechain layers used to start at 85%). Projects where you changed the opacity keep it.
 - The zoom readout no longer sits under the resize corner.
 
+### Fixed
+- The window now reopens at the size you left it, in the same session and in saved projects. It used to open at 760 × 360 every time. New instances still start at 760 × 360.
+
 ## [1.1.0] - 2026-11-18
 
 ### Added

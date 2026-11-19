@@ -268,12 +268,18 @@ SmartscopeAudioProcessorEditor::SmartscopeAudioProcessorEditor (SmartscopeAudioP
     zoomButton.onClick = [this] { scope.resetZoom(); };
     addAndMakeVisible (zoomButton);
 
-    setResizable (true, true);
     // Small enough to tuck into a corner, big enough to fill an 8K screen or a super-ultrawide
     // at 100 % display scaling (people detach it and give it a whole monitor). The header and
     // footer drop less important controls as the window gets smaller.
+    //
+    // Read the saved size first: setResizeLimits() snaps the still 0 x 0 editor to the minimum
+    // size and calls resized(), which would otherwise overwrite the saved size with the minimum.
+    const int startWidth  = juce::jlimit (minWidth,  maxWidth,  proc.editorWidth);
+    const int startHeight = juce::jlimit (minHeight, maxHeight, proc.editorHeight);
+    setResizable (true, true);
     setResizeLimits (minWidth, minHeight, maxWidth, maxHeight);
-    setSize (juce::jlimit (minWidth, maxWidth, proc.editorWidth), juce::jlimit (minHeight, maxHeight, proc.editorHeight));
+    setSize (startWidth, startHeight);
+    sizeRestored = true;
 
     applyTheme (proc.themeIndex.load());
 
@@ -502,8 +508,11 @@ void SmartscopeAudioProcessorEditor::resized()
     if (settingsPanel != nullptr)
         settingsPanel->setBounds (getLocalBounds().withTrimmedTop (headerHeight));
 
-    proc.editorWidth = getWidth();
-    proc.editorHeight = getHeight();
+    if (sizeRestored)   // not during construction, see the constructor
+    {
+        proc.editorWidth = getWidth();
+        proc.editorHeight = getHeight();
+    }
 }
 
 void SmartscopeAudioProcessorEditor::layoutHeader (juce::Rectangle<int> area)
