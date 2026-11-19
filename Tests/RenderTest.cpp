@@ -299,10 +299,48 @@ namespace site
     /** The mouse pointer for the demo video: Windows' arrow when the button is up, a grabbing
         hand (what Smartscope shows while dragging) when it's down. Drawn here, at `pos`
         (the arrow's tip, or the middle of the hand), in editor coordinates. */
+    enum class Pointer { arrow, grab, resize };
+
+    static void drawPointer (juce::Graphics& g, juce::Point<float> pos, Pointer kind);
+
     static void drawPointer (juce::Graphics& g, juce::Point<float> pos, bool grabbing)
     {
+        drawPointer (g, pos, grabbing ? Pointer::grab : Pointer::arrow);
+    }
+
+    static void drawPointer (juce::Graphics& g, juce::Point<float> pos, Pointer kind)
+    {
+        const bool grabbing = kind == Pointer::grab;
         constexpr float size = 1.5f;   // a bit bigger than 1:1, so it reads in a small video
         const auto ink = juce::Colour (0xff101113), paper = juce::Colours::white;
+
+        if (kind == Pointer::resize)
+        {
+            // Windows' diagonal resize pointer: a double-headed arrow from top left to bottom
+            // right, drawn level and then turned 45 degrees
+            juce::Path p;
+            const float L = 8.0f, hl = 4.2f, hw = 4.0f, w = 1.3f;   // half length, head length, head and shaft half-widths
+            p.startNewSubPath (-L, 0.0f);
+            p.lineTo (-L + hl, -hw);
+            p.lineTo (-L + hl, -w);
+            p.lineTo (L - hl, -w);
+            p.lineTo (L - hl, -hw);
+            p.lineTo (L, 0.0f);
+            p.lineTo (L - hl, hw);
+            p.lineTo (L - hl, w);
+            p.lineTo (-L + hl, w);
+            p.lineTo (-L + hl, hw);
+            p.closeSubPath();
+            p.applyTransform (juce::AffineTransform::rotation (juce::MathConstants<float>::pi / 4.0f));
+            p.applyTransform (juce::AffineTransform::scale (size).translated (pos));
+            g.setColour (juce::Colours::black.withAlpha (0.25f));
+            g.fillPath (p, juce::AffineTransform::translation (1.0f, 1.5f));
+            g.setColour (paper);
+            g.fillPath (p);
+            g.setColour (ink);
+            g.strokePath (p, juce::PathStrokeType (1.1f, juce::PathStrokeType::mitered));
+            return;
+        }
 
         if (! grabbing)
         {
@@ -496,6 +534,121 @@ namespace site
                     offset = ph2.direction > 0 ? 1.0 : 0.0;
             }
             std::cout << "  " << index << " video frames at " << fps << " fps" << std::endl;
+            e.reset();
+            p->setPlayHead (nullptr);
+        }
+
+        // Frames for the resize loop ("Make it as big as you like"). The plugin sits on a dark
+        // background at its normal size; the pointer drags the resize corner down to a strip
+        // (watch the header and footer make room), then up to fill the frame, clicks the
+        // corners button (scope only), brings the controls back from the top-left corner, and
+        // drags back to the normal size, so the loop has no seam.
+        {
+            auto p = makeProcessor (a, ph, lengthHalfBar);
+            p->getUISettings().setProperty (UISettings::showHoverKey, false, nullptr);   // no readout box
+            const juce::Point<int> startSize { 760, 360 }, smallSize { 280, 140 };
+            constexpr int canvasW = 1140, canvasH = 500, margin = 24;
+            const juce::Point<int> bigSize { canvasW - 2 * margin, canvasH - 2 * margin };
+            const juce::Point<float> origin { (float) margin, (float) margin };
+            auto e = makeEditor (*p, startSize.x, startSize.y);
+
+            auto framesDir = outDir.getChildFile ("resize_frames");
+            framesDir.deleteRecursively();
+            framesDir.createDirectory();
+            int index = 0;
+
+            juce::Point<float> pointer;   // in editor coordinates
+            juce::Point<int> size = startSize;
+            Pointer kind = Pointer::arrow;
+
+            auto corner = [] (juce::Point<int> sz) { return juce::Point<float> ((float) sz.x - 9.0f, (float) sz.y - 9.0f); };
+            auto ease = [] (double t) { return 0.5 - 0.5 * std::cos (juce::MathConstants<double>::pi * t); };
+            auto lerp = [] (juce::Point<float> p0, juce::Point<float> p1, double t)
+            {
+                return p0 + (p1 - p0) * (float) t;
+            };
+
+            auto frame = [&]
+            {
+                if (e->getWidth() != size.x || e->getHeight() != size.y)
+                {
+                    e->setSize (size.x, size.y);
+                    e->getScopeView().refreshForTest();
+                }
+                juce::Image canvas (juce::Image::ARGB, (int) (canvasW * scale), (int) (canvasH * scale), true);
+                juce::Graphics g (canvas);
+                g.addTransform (juce::AffineTransform::scale (scale));
+                g.fillAll (juce::Colour (0xff2a3238));   // a dark workspace, like FL Studio's
+                auto shot = e->createComponentSnapshot (e->getLocalBounds(), true, scale);
+                g.drawImage (shot, juce::Rectangle<float> (origin.x, origin.y, (float) size.x, (float) size.y));
+                g.setColour (juce::Colour (0xff11151a));
+                g.drawRect (juce::Rectangle<float> (origin.x - 1.0f, origin.y - 1.0f, (float) size.x + 2.0f, (float) size.y + 2.0f), 1.0f);
+                drawPointer (g, origin + pointer, kind);
+                auto out = framesDir.getChildFile ("site_resize_" + juce::String (index++).paddedLeft ('0', 4) + ".png");
+                out.deleteFile();
+                juce::FileOutputStream os (out);
+                juce::PNGImageFormat().writeImageToStream (canvas, os);
+            };
+
+            auto hold = [&] (int frames) { for (int f = 0; f < frames; ++f) frame(); };
+
+            auto moveTo = [&] (juce::Point<float> target, int frames, bool tellEditor = false)
+            {
+                const auto from = pointer;
+                const float arcAmount = 0.08f * from.getDistanceFrom (target);
+                for (int f = 1; f <= frames; ++f)
+                {
+                    const double t = ease ((double) f / frames);
+                    pointer = lerp (from, target, t) + juce::Point<float> (0.0f, -arcAmount * (float) std::sin (juce::MathConstants<double>::pi * t));
+                    if (tellEditor)   // so the scope-only view shows its way back, as with a real mouse
+                    {
+                        const juce::MouseEvent move (juce::Desktop::getInstance().getMainMouseSource(), pointer,
+                                                     juce::ModifierKeys(), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, e.get(), e.get(),
+                                                     juce::Time::getCurrentTime(), pointer, juce::Time::getCurrentTime(), 0, false);
+                        e->mouseMove (move);
+                    }
+                    frame();
+                }
+            };
+
+            auto resizeTo = [&] (juce::Point<int> target, int frames)
+            {
+                const auto from = size;
+                for (int f = 1; f <= frames; ++f)
+                {
+                    const double t = ease ((double) f / frames);
+                    size = { juce::roundToInt (from.x + (target.x - from.x) * t), juce::roundToInt (from.y + (target.y - from.y) * t) };
+                    pointer = corner (size);   // the corner stays under the pointer
+                    frame();
+                }
+            };
+
+            // Where the header's corners button is when the help button shows (see layoutHeader)
+            auto scopeOnlyButton = [] (juce::Point<int> sz) { return juce::Point<float> ((float) sz.x - 76.0f, 18.0f); };
+            const juce::Point<float> exitButton { 22.0f, 10.0f };
+            const juce::Point<float> restSpot = corner (startSize) + juce::Point<float> (-70.0f, -60.0f);
+
+            pointer = restSpot;
+            hold (18);
+            moveTo (corner (startSize), 16);
+            kind = Pointer::resize;          hold (5);
+            resizeTo (smallSize, 58);        hold (20);
+            resizeTo (bigSize, 70);
+            kind = Pointer::arrow;           hold (12);
+            moveTo (scopeOnlyButton (bigSize), 22);
+            hold (4);
+            e->setScopeOnly (true);          hold (36);
+            moveTo (exitButton, 24, true);
+            hold (6);
+            e->setScopeOnly (false);         hold (12);
+            moveTo (corner (bigSize), 24);
+            kind = Pointer::resize;          hold (5);
+            resizeTo (startSize, 52);
+            kind = Pointer::arrow;           hold (6);
+            moveTo (restSpot, 16);
+            hold (8);
+
+            std::cout << "  " << index << " resize frames at 30 fps" << std::endl;
             e.reset();
             p->setPlayHead (nullptr);
         }

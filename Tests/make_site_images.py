@@ -18,8 +18,10 @@ Website (--site), as the product page expects:
     main-share.jpg                  1200 px wide, for social previews (some sites don't read WebP)
     theme-<name>.webp               lossless, 1140 px wide for the two-column grid
     settings.webp                   lossless, 2x (show it at half its pixel size)
-    drag-loop.mp4                   muted H.264 loop, 1280 x 440
+    drag-loop.mp4                   muted H.264 loop, 1280 x 440 (the hand dragging the view)
     drag-loop-poster.webp           its first frame
+    resize-loop.mp4                 muted H.264 loop, 1600 x 702 (resizing, scope only)
+    resize-loop-poster.webp         its first frame
 """
 
 import argparse
@@ -33,8 +35,12 @@ from PIL import Image
 THEMES = ["graphite", "midnight", "phosphor", "daylight"]
 GRID_GAP = 10
 GRID_BACKGROUND = (13, 17, 23)
-VIDEO_SIZE = (1280, 440)
 VIDEO_FPS = 30
+# (frames folder, frame name prefix, output name, size)
+VIDEOS = [
+    ("drag_frames", "site_drag", "drag-loop", (1280, 440)),
+    ("resize_frames", "site_resize", "resize-loop", (1600, 702)),
+]
 
 
 def load(renders: Path, name: str) -> Image.Image:
@@ -64,6 +70,25 @@ def write_readme(renders: Path, out: Path) -> None:
     print(f"README images written to {out}")
 
 
+def write_video(frames_dir: Path, prefix: str, out_stem: Path, size) -> None:
+    frames = sorted(frames_dir.glob(f"{prefix}_*.png"))
+    if not frames:
+        print(f"No frames in {frames_dir}: skipped {out_stem.name}")
+        return
+    Image.open(frames[0]).convert("RGB").resize(size, Image.LANCZOS).save(
+        out_stem.with_name(out_stem.name + "-poster.webp"), lossless=True, method=6)
+    if not shutil.which("ffmpeg"):
+        print(f"ffmpeg not found: skipped {out_stem.name}.mp4")
+        return
+    subprocess.run([
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-framerate", str(VIDEO_FPS), "-i", str(frames_dir / f"{prefix}_%04d.png"),
+        "-vf", f"scale={size[0]}:{size[1]}:flags=lanczos,format=yuv420p",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-movflags", "+faststart", "-an", str(out_stem.with_name(out_stem.name + ".mp4")),
+    ], check=True)
+
+
 def write_site(renders: Path, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     main = load(renders, "site_main")
@@ -75,20 +100,8 @@ def write_site(renders: Path, out: Path) -> None:
     for t in THEMES:
         theme_tile(renders, t).save(out / f"theme-{t}.webp", lossless=True, method=6)
 
-    frames = sorted((renders / "drag_frames").glob("site_drag_*.png"))
-    if frames:
-        Image.open(frames[0]).convert("RGB").resize(VIDEO_SIZE, Image.LANCZOS).save(
-            out / "drag-loop-poster.webp", lossless=True, method=6)
-        if shutil.which("ffmpeg"):
-            subprocess.run([
-                "ffmpeg", "-y", "-loglevel", "error",
-                "-framerate", str(VIDEO_FPS), "-i", str(renders / "drag_frames" / "site_drag_%04d.png"),
-                "-vf", f"scale={VIDEO_SIZE[0]}:{VIDEO_SIZE[1]}:flags=lanczos,format=yuv420p",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-                "-movflags", "+faststart", "-an", str(out / "drag-loop.mp4"),
-            ], check=True)
-        else:
-            print("ffmpeg not found: skipped drag-loop.mp4")
+    for folder, prefix, name, size in VIDEOS:
+        write_video(renders / folder, prefix, out / name, size)
     print(f"Website images written to {out}")
 
 
