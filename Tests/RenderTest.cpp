@@ -296,6 +296,63 @@ namespace site
         if (kick) ui.setProperty (UISettings::colourKey (1), kick->toString(), nullptr); else ui.removeProperty (UISettings::colourKey (1), nullptr);
     }
 
+    /** The mouse pointer for the demo video: Windows' arrow when the button is up, a grabbing
+        hand (what Smartscope shows while dragging) when it's down. Drawn here, at `pos`
+        (the arrow's tip, or the middle of the hand), in editor coordinates. */
+    static void drawPointer (juce::Graphics& g, juce::Point<float> pos, bool grabbing)
+    {
+        constexpr float size = 1.5f;   // a bit bigger than 1:1, so it reads in a small video
+        const auto ink = juce::Colour (0xff101113), paper = juce::Colours::white;
+
+        if (! grabbing)
+        {
+            juce::Path arrow;
+            arrow.startNewSubPath (0.0f, 0.0f);
+            arrow.lineTo (0.0f, 17.0f);
+            arrow.lineTo (4.0f, 13.2f);
+            arrow.lineTo (7.0f, 19.8f);
+            arrow.lineTo (9.6f, 18.7f);
+            arrow.lineTo (6.7f, 12.2f);
+            arrow.lineTo (12.2f, 12.2f);
+            arrow.closeSubPath();
+            arrow.applyTransform (juce::AffineTransform::scale (size).translated (pos));
+            g.setColour (juce::Colours::black.withAlpha (0.25f));
+            g.fillPath (arrow, juce::AffineTransform::translation (1.0f, 1.5f));   // soft drop shadow, like Windows
+            g.setColour (paper);
+            g.fillPath (arrow);
+            g.setColour (ink);
+            g.strokePath (arrow, juce::PathStrokeType (1.1f, juce::PathStrokeType::mitered));
+            return;
+        }
+
+        // Grabbing hand: four curled fingers over the palm, thumb tucked in on the left.
+        // Outline everything thick first, then fill white on top, so only the outer edge shows.
+        juce::Path hand;
+        hand.addRoundedRectangle (2.0f, 6.5f, 14.5f, 11.0f, 4.0f);                 // palm
+        for (int i = 0; i < 4; ++i)
+            hand.addRoundedRectangle (2.6f + 3.45f * (float) i, 3.0f, 3.6f, 7.0f, 1.8f);   // knuckles
+        hand.addRoundedRectangle (-0.6f, 8.6f, 6.0f, 4.2f, 2.1f);                  // thumb
+        const auto place = juce::AffineTransform::translation (-8.5f, -10.0f).scaled (size).translated (pos);
+        hand.applyTransform (place);
+
+        g.setColour (juce::Colours::black.withAlpha (0.25f));
+        g.fillPath (hand, juce::AffineTransform::translation (1.0f, 1.5f));
+        g.setColour (ink);
+        g.strokePath (hand, juce::PathStrokeType (2.2f));
+        g.setColour (paper);
+        g.fillPath (hand);
+
+        // Creases between the fingers
+        g.setColour (ink.withAlpha (0.55f));
+        for (int i = 1; i < 4; ++i)
+        {
+            const float fx = 2.6f + 3.45f * (float) i - 0.1f;
+            juce::Line<float> crease (fx, 4.6f, fx, 8.6f);
+            crease.applyTransform (place);
+            g.drawLine (crease, 0.9f);
+        }
+    }
+
     static int render (const juce::File& outDir)
     {
         const auto audioDir = juce::File (SMARTSCOPE_SOURCE_DIR).getChildFile ("Tests/audio");
@@ -360,34 +417,83 @@ namespace site
             p->setPlayHead (nullptr);
         }
 
-        // Frames for the demo loop: zoomed in 27 times on a two-bar window, the view slides
-        // exactly one beat from one kick to the next, waits, and slides back. Going back and
-        // forth makes the loop seamless: the ruler labels are positions in the window, so a
-        // one-way pan would jump at the seam even though every kick looks the same.
+        // Frames for the demo loop, made to look like someone using it. The plugin shows the
+        // normal arrow over the display and a grabbing hand while dragging, so the video does
+        // too. At about Zoom x5 on a two-bar window, one beat is 62 % of the display: the arrow
+        // rests on the next kick, grabs it, and pulls it to where the first one was (the view
+        // moves with the hand, exactly as the plugin pans), lets go, then drags it back.
+        // Forward and back keeps the loop seamless: the ruler labels are positions in the
+        // window, so a one-way pan would jump at the seam.
         {
             auto p = makeProcessor (a, ph, lengthTwoBars);
+            p->getUISettings().setProperty (UISettings::showHoverKey, false, nullptr);   // no readout box
             auto e = makeEditor (*p, width, height);
             auto& sv = e->getScopeView();
-            const double span = 1.0 / 27.0;
+            const auto trace = sv.getTraceAreaForTest().translated ((float) sv.getX(), (float) sv.getY());
+
             const double beat = 1.0 / 8.0;                     // one beat of a two-bar window
-            const double lead = 0.003 / (8.0 * 60.0 / bpm);    // 3 ms of silence before the kick
-            const double from = 2.0 * beat - lead;
-            constexpr int fps = 30, holdFrames = 18, moveFrames = 78;
+            const double dragShare = 0.62;                     // one beat = 62 % of the display
+            const double span = beat / dragShare;
+            const double from = 2.0 * beat - 0.10 * span;      // kick on beat 3 sits 10 % from the left
+            const float grabX = trace.getX() + 0.80f * trace.getWidth();   // on the next kick
+            const float grabY = trace.getY() + 0.62f * trace.getHeight();
+            const float dragPx = (float) dragShare * trace.getWidth();
+
+            enum class Kind { rest, press, drag, release };
+            struct Phase { Kind kind; int frames; int direction; };   // direction: +1 forward, -1 back
+            const Phase phases[] = {
+                { Kind::rest,    16,  0 },
+                { Kind::press,    7,  0 },
+                { Kind::drag,    50, +1 },
+                { Kind::release,  7,  0 },
+                { Kind::rest,    22,  0 },
+                { Kind::press,    7,  0 },
+                { Kind::drag,    50, -1 },
+                { Kind::release,  7,  0 },
+                { Kind::rest,     6,  0 },
+            };
+
+            constexpr int fps = 30;
             auto framesDir = outDir.getChildFile ("drag_frames");
             framesDir.deleteRecursively();
             framesDir.createDirectory();
+
+            double offset = 0.0;   // 0 = first kick in place, 1 = dragged one beat forward
             int index = 0;
-            constexpr int half = holdFrames + moveFrames;
-            for (int i = 0; i < 2 * half; ++i)
+            for (auto& ph2 : phases)
             {
-                const int k = i % half;
-                double t = k < holdFrames ? 0.0 : (double) (k - holdFrames) / (double) moveFrames;
-                t = t * t * (3.0 - 2.0 * t);   // ease in and out, like a hand on the mouse
-                if (i >= half)
-                    t = 1.0 - t;               // and back again
-                sv.setViewForTest (from + t * beat, span);
-                sv.refreshForTest();
-                save (*e, e->getLocalBounds(), framesDir.getChildFile ("site_drag_" + juce::String (index++).paddedLeft ('0', 4) + ".png"));
+                for (int f = 0; f < ph2.frames; ++f)
+                {
+                    const bool down = ph2.kind == Kind::press || ph2.kind == Kind::drag
+                                      || (ph2.kind == Kind::release && f < 2);
+                    double o = offset;
+                    float arc = 0.0f;
+                    if (ph2.kind == Kind::drag)
+                    {
+                        const double t = (double) (f + 1) / (double) ph2.frames;
+                        const double eased = 0.5 - 0.5 * std::cos (juce::MathConstants<double>::pi * t);   // speed up, slow down
+                        o = ph2.direction > 0 ? eased : 1.0 - eased;
+                        arc = -5.0f * (float) std::sin (juce::MathConstants<double>::pi * t);              // a hand moves in a slight arc
+                    }
+                    // The hand holds the waveform: moving it left by dragPx moves the view one beat on
+                    const float x = grabX - (float) o * dragPx;
+                    const float y = grabY + arc;
+                    sv.setViewForTest (from + o * beat, span);
+                    sv.refreshForTest();
+
+                    auto img = e->createComponentSnapshot (e->getLocalBounds(), true, scale);
+                    {
+                        juce::Graphics g (img);
+                        g.addTransform (juce::AffineTransform::scale (scale));
+                        drawPointer (g, { x, y }, down);
+                    }
+                    auto out = framesDir.getChildFile ("site_drag_" + juce::String (index++).paddedLeft ('0', 4) + ".png");
+                    out.deleteFile();
+                    juce::FileOutputStream os (out);
+                    juce::PNGImageFormat().writeImageToStream (img, os);
+                }
+                if (ph2.kind == Kind::drag)
+                    offset = ph2.direction > 0 ? 1.0 : 0.0;
             }
             std::cout << "  " << index << " video frames at " << fps << " fps" << std::endl;
             e.reset();
