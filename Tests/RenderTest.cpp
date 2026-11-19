@@ -346,6 +346,16 @@ int main()
         snapshot (*e2, "12_settings");
         e2->setSize (760, 360);
         snapshot (*e2, "13_settings_min");
+        e2->toggleSettings();
+
+        // Big screens: the old 3000 x 1600 cap must be gone, and a 4K window must draw
+        if (auto* c = e2->getConstrainer())
+            check (c->getMaximumWidth() >= 7680 && c->getMaximumHeight() >= 4320,
+                   "resize limit reaches 7680 x 4320");
+        e2->setSize (3840, 2160);
+        check (e2->getWidth() == 3840 && e2->getHeight() == 2160, "editor can be 3840 x 2160");
+        sv.refreshForTest();
+        snapshot (*e2, "14_layers_4k");
 
         e2.reset();
 

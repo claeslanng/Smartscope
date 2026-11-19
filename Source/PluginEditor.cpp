@@ -250,8 +250,11 @@ SmartscopeAudioProcessorEditor::SmartscopeAudioProcessorEditor (SmartscopeAudioP
     addAndMakeVisible (zoomButton);
 
     setResizable (true, true);
-    setResizeLimits (760, 360, 3000, 1600);
-    setSize (juce::jlimit (760, 3000, proc.editorWidth), juce::jlimit (360, 1600, proc.editorHeight));
+    // Small enough to tuck away, big enough to fill an 8K screen or a super-ultrawide
+    // at 100 % display scaling (people detach it and give it a whole monitor).
+    constexpr int minW = 760, minH = 360, maxW = 7680, maxH = 4320;
+    setResizeLimits (minW, minH, maxW, maxH);
+    setSize (juce::jlimit (minW, maxW, proc.editorWidth), juce::jlimit (minH, maxH, proc.editorHeight));
 
     applyTheme (proc.themeIndex.load());
 

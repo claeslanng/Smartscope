@@ -44,7 +44,7 @@ The plugin passes audio through unchanged, so it's safe on any track or on the m
 | **0 dB markers** | Red ticks show where the signal goes above 0 dBFS. |
 | **Hover readout** | Time from the start of the window in ms, plus the sample's value, sign and level. |
 | **Themes and colours** | Four themes, plus your own colour and opacity for every layer. Saved with the project. |
-| **Any size** | Drag the corner from 760 × 360 up to 3000 × 1600. Detach the window and give it a whole second monitor, a TV or a tablet. The grid and dB labels get finer as it grows, and the size is saved with the project. |
+| **Any size** | Drag the corner from 760 × 360 up to 7680 × 4320. Detach the window and give it a whole second monitor, a TV or a tablet. The grid and dB labels get finer as it grows, and the size is saved with the project. |
 
 <p align="center">
   <img src="docs/images/zoom.png" width="900" alt="Zoomed in: the bass starts about 18 ms after the kick">
@@ -53,7 +53,7 @@ The plugin passes audio through unchanged, so it's safe on any track or on the m
 
 ## Make it big
 
-Smartscope resizes freely, from 760 × 360 up to 3000 × 1600. In FL Studio, choose **Detached** in the plugin window's menu (the small arrow at the top left), drag the window to another screen, and pull the corner until it fills it. A second monitor, a TV or a tablet set up as an extra display all work. The grid adds 1/32 lines and finer dB labels as there's room, and the size is saved with the project.
+Smartscope resizes freely, from 760 × 360 up to 7680 × 4320. In FL Studio, choose **Detached** in the plugin window's menu (the small arrow at the top left), drag the window to another screen, and pull the corner until it fills it. A second monitor, a TV or a tablet set up as an extra display all work. The grid adds 1/32 lines and finer dB labels as there's room, and the size is saved with the project.
 
 <p align="center">
   <img src="docs/images/fullscreen.png" width="900" alt="Smartscope filling a second monitor in FL Studio, showing the kick (blue) over the bass (grey)">

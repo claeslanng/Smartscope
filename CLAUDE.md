@@ -91,8 +91,9 @@ release, update the version on the product page in `claeslanng/claeslanng.github
 
 ## Selling points the owner wants promoted
 
-- **Any size** (760 × 360 up to 3000 × 1600, `setResizeLimits` in PluginEditor.cpp):
-  detach it in FL and give it a whole second monitor, TV or tablet. Keep the README
+- **Any size** (760 × 360 up to 7680 × 4320, `setResizeLimits` in PluginEditor.cpp):
+  detach it in FL (the menu item is called **Detached**, under the arrow at the top left
+  of the plugin window) and give it a whole second monitor, TV or tablet. Keep the README
   "Make it big" section and the product page's matching section in step with the limits.
 
 ## Verified in FL Studio (2026-11-19, v1.1.0)

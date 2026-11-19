@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- The window now resizes up to 7680 × 4320 (it stopped at 3000 × 1600), so it can fill a 4K or 8K screen or a super-ultrawide, even at 100% display scaling.
+
 ## [1.1.0] - 2026-11-18
 
 ### Added
