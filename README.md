@@ -14,7 +14,8 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/hero.png" width="900" alt="Smartscope showing a kick on sidechain 1 (orange) over a bass (grey)">
+  <img src="docs/images/fl-studio.png" width="900" alt="Two Smartscope windows in FL Studio: a drums track with kick, clap and perc on three sidechain layers, and a bass track with the kick on sidechain 2">
+  <br><sub>In FL Studio. Top: drums, with the kick (orange), clap (blue) and a perc hit (purple) on sidechains 1 to 3. Bottom: the bass (grey) with the kick on sidechain 2 (blue).</sub>
 </p>
 
 ---
