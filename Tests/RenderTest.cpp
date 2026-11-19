@@ -3,12 +3,14 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_audio_formats/juce_audio_formats.h>
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "UISettings.h"
 
 #include <cmath>
 #include <iostream>
+#include <optional>
 
 struct FakePlayHead : juce::AudioPlayHead
 {
@@ -197,9 +199,212 @@ static void snapshot (juce::Component& c, const juce::String& name)
     std::cout << "  wrote " << out.getFullPathName() << std::endl;
 }
 
-int main()
+//==============================================================================
+// Screenshot mode: RenderTest --site <folder>
+//
+// Renders the images for the README and the product page from the real test audio in
+// Tests/audio (kick into sidechain 1, ducked bass into the main input, 4 bars at 128 BPM),
+// at 2x scale. Tests/make_site_images.py turns the PNGs into the files the README and the
+// website use. Lives only in this test program: the plugin has no hidden mode.
+
+namespace site
+{
+    constexpr double bpm = 128.0;
+    constexpr float  scale = 2.0f;                 // 2x for sharp images on high-density screens
+    constexpr int    width = 1140, height = 392;   // 2280 x 784 px at 2x
+    constexpr int    lengthHalfBar = 3, lengthTwoBars = 5;
+
+    struct Audio
+    {
+        juce::AudioBuffer<float> kick, bass;
+        double sampleRate = 44100.0;
+    };
+
+    static bool loadWav (const juce::File& file, juce::AudioBuffer<float>& out, double& sampleRate)
+    {
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+        if (reader == nullptr)
+            return false;
+        out.setSize (2, (int) reader->lengthInSamples);
+        reader->read (&out, 0, (int) reader->lengthInSamples, 0, true, true);
+        sampleRate = reader->sampleRate;
+        return true;
+    }
+
+    /** A processor with sidechain 1 on, fed the whole 4-bar loop while "playing" at 128 BPM.
+        Stopping exactly at the end of bar 4 leaves the last full window in the buffer. */
+    static std::unique_ptr<SmartscopeAudioProcessor> makeProcessor (const Audio& a, FakePlayHead& ph, int lengthIndex,
+                                                                    bool withAudio = true)
+    {
+        auto p = std::make_unique<SmartscopeAudioProcessor>();
+        auto layout = p->getBusesLayout();
+        layout.inputBuses.getReference (1) = juce::AudioChannelSet::stereo();
+        p->setBusesLayout (layout);
+        p->setPlayHead (&ph);
+        constexpr int block = 512;
+        p->setRateAndBufferSizeDetails (a.sampleRate, block);
+        p->prepareToPlay (a.sampleRate, block);
+        if (auto* lp = p->apvts.getParameter (ParamIDs::length))
+            lp->setValueNotifyingHost (lp->convertTo0to1 ((float) lengthIndex));
+        p->getUISettings().setProperty (UISettings::showCursorKey, false, nullptr);   // play cursor off
+
+        ph.bpm = bpm;
+        ph.playing = true;
+        const double spb = a.sampleRate * 60.0 / bpm;
+        const int total = withAudio ? a.bass.getNumSamples() : block;
+        juce::AudioBuffer<float> buf (4, block);
+        juce::MidiBuffer midi;
+        for (int s0 = 0; s0 < total; s0 += block)
+        {
+            const int n = juce::jmin (block, total - s0);
+            buf.setSize (4, n, false, false, true);
+            buf.clear();
+            if (withAudio)
+                for (int ch = 0; ch < 2; ++ch)
+                {
+                    buf.copyFrom (ch,     0, a.bass, ch, s0, n);   // main input
+                    buf.copyFrom (ch + 2, 0, a.kick, ch, s0, n);   // sidechain 1
+                }
+            ph.ppq = (double) s0 / spb;
+            p->processBlock (buf, midi);
+        }
+        return p;
+    }
+
+    static std::unique_ptr<SmartscopeAudioProcessorEditor> makeEditor (SmartscopeAudioProcessor& p, int w, int h)
+    {
+        std::unique_ptr<SmartscopeAudioProcessorEditor> e (dynamic_cast<SmartscopeAudioProcessorEditor*> (p.createEditor()));
+        e->setSize (w, h);
+        e->getScopeView().refreshForTest();
+        return e;
+    }
+
+    static void save (juce::Component& c, juce::Rectangle<int> area, const juce::File& file)
+    {
+        auto img = c.createComponentSnapshot (area, true, scale);
+        file.deleteFile();
+        juce::FileOutputStream os (file);
+        juce::PNGImageFormat().writeImageToStream (img, os);
+    }
+
+    static void setColours (SmartscopeAudioProcessor& p, std::optional<juce::Colour> main, std::optional<juce::Colour> kick)
+    {
+        auto ui = p.getUISettings();
+        if (main) ui.setProperty (UISettings::colourKey (0), main->toString(), nullptr); else ui.removeProperty (UISettings::colourKey (0), nullptr);
+        if (kick) ui.setProperty (UISettings::colourKey (1), kick->toString(), nullptr); else ui.removeProperty (UISettings::colourKey (1), nullptr);
+    }
+
+    static int render (const juce::File& outDir)
+    {
+        const auto audioDir = juce::File (SMARTSCOPE_SOURCE_DIR).getChildFile ("Tests/audio");
+        Audio a;
+        double kickRate = 0.0;
+        if (! loadWav (audioDir.getChildFile ("Smartscope Audio-Visual Test - Kick 1.wav"), a.kick, kickRate)
+            || ! loadWav (audioDir.getChildFile ("Smartscope Audio-Visual Test - Bass 1.wav"), a.bass, a.sampleRate)
+            || kickRate != a.sampleRate || a.kick.getNumSamples() != a.bass.getNumSamples())
+        {
+            std::cout << "Couldn't load matching test audio from " << audioDir.getFullPathName() << std::endl;
+            return 1;
+        }
+        outDir.createDirectory();
+        auto file = [&] (const juce::String& name) { return outDir.getChildFile (name + ".png"); };
+        std::cout << "Rendering site images to " << outDir.getFullPathName() << std::endl;
+
+        FakePlayHead ph;
+
+        // Main shot and the four themes: half a bar, the same audio and view each time
+        {
+            auto p = makeProcessor (a, ph, lengthHalfBar);
+            auto e = makeEditor (*p, width, height);
+            save (*e, e->getLocalBounds(), file ("site_main"));
+
+            struct ThemeShot { int theme; const char* name; std::optional<juce::Colour> main, kick; };
+            const ThemeShot shots[] = {
+                { 0, "graphite", std::nullopt,                std::nullopt },                  // the defaults
+                { 1, "midnight", juce::Colour (0xffffffff),   juce::Colour (0xff40d0ff) },     // white bass, cyan kick
+                { 2, "phosphor", juce::Colour (0xff6cff8a),   juce::Colour (0xffffc23d) },     // green bass, amber kick
+                { 3, "daylight", std::nullopt,                juce::Colour (0xff2563eb) },     // near-black bass, deep blue kick
+            };
+            for (auto& s : shots)
+            {
+                e->applyTheme (s.theme);
+                setColours (*p, s.main, s.kick);
+                e->getScopeView().refreshForTest();
+                save (*e, e->getLocalBounds(), file (juce::String ("site_theme_") + s.name));
+            }
+            e->applyTheme (0);
+            setColours (*p, std::nullopt, std::nullopt);
+
+            // Zoomed in on the first ~14 ms of a kick (the kick lands at the start of the window)
+            e->getScopeView().setViewForTest (0.0, 1.0 / 68.0);
+            e->getScopeView().refreshForTest();
+            save (*e, e->getLocalBounds(), file ("site_zoom"));
+            e.reset();
+            p->setPlayHead (nullptr);
+        }
+
+        // Settings, with no audio behind it: just the card, at 2x so the text is sharp
+        {
+            auto p = makeProcessor (a, ph, lengthHalfBar, false);
+            p->getUISettings().removeProperty (UISettings::showCursorKey, nullptr);   // show the default
+            auto e = makeEditor (*p, 900, 420);
+            e->toggleSettings();
+            if (auto* panel = e->getSettingsPanel())
+            {
+                const auto card = panel->getCardBounds().translated (panel->getX(), panel->getY());
+                save (*e, card.expanded (1), file ("site_settings"));
+            }
+            e.reset();
+            p->setPlayHead (nullptr);
+        }
+
+        // Frames for the demo loop: zoomed in 27 times on a two-bar window, the view slides
+        // exactly one beat from one kick to the next, waits, and slides back. Going back and
+        // forth makes the loop seamless: the ruler labels are positions in the window, so a
+        // one-way pan would jump at the seam even though every kick looks the same.
+        {
+            auto p = makeProcessor (a, ph, lengthTwoBars);
+            auto e = makeEditor (*p, width, height);
+            auto& sv = e->getScopeView();
+            const double span = 1.0 / 27.0;
+            const double beat = 1.0 / 8.0;                     // one beat of a two-bar window
+            const double lead = 0.003 / (8.0 * 60.0 / bpm);    // 3 ms of silence before the kick
+            const double from = 2.0 * beat - lead;
+            constexpr int fps = 30, holdFrames = 18, moveFrames = 78;
+            auto framesDir = outDir.getChildFile ("drag_frames");
+            framesDir.deleteRecursively();
+            framesDir.createDirectory();
+            int index = 0;
+            constexpr int half = holdFrames + moveFrames;
+            for (int i = 0; i < 2 * half; ++i)
+            {
+                const int k = i % half;
+                double t = k < holdFrames ? 0.0 : (double) (k - holdFrames) / (double) moveFrames;
+                t = t * t * (3.0 - 2.0 * t);   // ease in and out, like a hand on the mouse
+                if (i >= half)
+                    t = 1.0 - t;               // and back again
+                sv.setViewForTest (from + t * beat, span);
+                sv.refreshForTest();
+                save (*e, e->getLocalBounds(), framesDir.getChildFile ("site_drag_" + juce::String (index++).paddedLeft ('0', 4) + ".png"));
+            }
+            std::cout << "  " << index << " video frames at " << fps << " fps" << std::endl;
+            e.reset();
+            p->setPlayHead (nullptr);
+        }
+
+        std::cout << "Done" << std::endl;
+        return 0;
+    }
+}
+
+int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI init;
+
+    if (argc >= 3 && juce::String (argv[1]) == "--site")
+        return site::render (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
 
     const double sr = 48000.0;
     SmartscopeAudioProcessor proc;
@@ -376,26 +581,6 @@ int main()
         snapshot (*e2, "14_layers_4k");
 
         e2.reset();
-
-        // Images for the README
-        if (auto* lp = p2.apvts.getParameter (ParamIDs::length))
-            lp->setValueNotifyingHost (lp->convertTo0to1 (4.0f));
-        p2.getUISettings().removeProperty (UISettings::colourKey (1), nullptr);
-        p2.getUISettings().removeProperty (UISettings::opacityKey (0), nullptr);
-        renderLayers (p2, ph2, sr, 2.5, 18.0);
-        std::unique_ptr<SmartscopeAudioProcessorEditor> e3 (
-            dynamic_cast<SmartscopeAudioProcessorEditor*> (p2.createEditor()));
-        e3->setSize (1000, 460);
-        e3->getScopeView().refreshForTest();
-        snapshot (*e3, "docs_hero");
-        e3->getScopeView().setViewForTest (0.0, 0.07);
-        e3->getScopeView().refreshForTest();
-        snapshot (*e3, "docs_zoom");
-        e3->getScopeView().resetZoom();
-        e3->setSize (900, 420);
-        e3->toggleSettings();
-        snapshot (*e3, "docs_settings");
-        e3.reset();
         p2.setPlayHead (nullptr);
     }
 

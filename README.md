@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/fl-studio.png" width="900" alt="Two Smartscope windows in FL Studio: a drums track with kick, clap and perc on three sidechain layers, and a bass track with the kick on sidechain 2">
-  <br><sub>In FL Studio. Top: drums, with the kick (orange), clap (blue) and a perc hit (purple) on sidechains 1 to 3. Bottom: the bass (gray) with the kick on sidechain 2 (blue).</sub>
+  <img src="docs/images/main.png" width="900" alt="Smartscope showing half a bar: a kick on sidechain 1 in orange, and the bass on the same track in light gray coming in as the kick dies away">
+  <br><sub>A kick on sidechain 1 (orange) over the bass on the same track (gray), half a bar long.</sub>
 </p>
 
 ---
@@ -48,8 +48,8 @@ The plugin passes audio through unchanged, so it's safe on any track or on the m
 | **Scope only** | One click hides the header and controls so only the display is left. |
 
 <p align="center">
-  <img src="docs/images/zoom.png" width="900" alt="Zoomed in: the bass starts about 18 ms after the kick">
-  <br><sub>Zoomed in: the bass (gray) starts about 18 ms after the kick (orange).</sub>
+  <img src="docs/images/zoom.png" width="900" alt="Smartscope zoomed in 68 times on the first 14 milliseconds of a kick">
+  <br><sub>The first 14 ms of the kick (orange), zoomed in 68 times. The bass (gray) hasn't started yet.</sub>
 </p>
 
 ## Make it big
@@ -74,6 +74,11 @@ It also goes small, down to 240 × 110. As the window shrinks, the status text, 
 
 Click a chip in the header to show or hide that layer. Colors and opacity are in **Settings**.
 
+<p align="center">
+  <img src="docs/images/fl-studio.png" width="900" alt="Two Smartscope windows in FL Studio: a drums track with kick, clap and perc on three sidechain layers, and a bass track with the kick on sidechain 2">
+  <br><sub>In FL Studio. Top: drums, with the kick (orange), clap (blue) and a perc hit (purple) on sidechains 1 to 3. Bottom: the bass (gray) with the kick on sidechain 2 (blue).</sub>
+</p>
+
 ## Mouse
 
 | Over the display | Does |
@@ -91,7 +96,7 @@ When the transport is stopped, the scope free-runs at the project tempo while th
 
 <p align="center">
   <img src="docs/images/themes.png" width="900" alt="Graphite, Midnight, Phosphor and Daylight themes">
-  <br><sub>Graphite · Midnight · Phosphor · Daylight</sub>
+  <br><sub>Graphite (orange kick, light gray bass) · Midnight (cyan, white) · Phosphor (amber, green) · Daylight (deep blue, near-black). Layer colors are chosen separately from the theme.</sub>
 </p>
 
 The gear button opens **Settings**:
@@ -101,7 +106,7 @@ The gear button opens **Settings**:
 - Display options: hover readout, play cursor, 0 dB markers, main layer on top.
 
 <p align="center">
-  <img src="docs/images/settings.png" width="760" alt="Settings panel">
+  <img src="docs/images/settings.png" width="822" alt="Settings: a color, hex code, opacity and show toggle for each layer, random and reset colors, the theme, display options and About">
 </p>
 
 ## Building from source
@@ -115,11 +120,18 @@ cmake --build build --config Release --target Smartscope_VST3
 
 The plugin ends up in `build/Smartscope_artefacts/Release/VST3/`.
 
-There's also an offline test that feeds synthetic audio through the plugin with a fake host. It checks the tempo sync and renders screenshots of the UI:
+There's also an offline test that feeds synthetic audio through the plugin with a fake host. It checks the tempo sync, the layout and the settings, and renders the UI to PNG files:
 
 ```sh
 cmake -B build -DSMARTSCOPE_BUILD_TESTS=ON
 cmake --build build --config Release --target RenderTest
+```
+
+The screenshots in this README and on the [product page](https://claeslanng.shop/smartscope/) come from the same program. It plays a real kick and bass (in `Tests/audio/`) through the plugin and renders at 2x:
+
+```sh
+RenderTest --site renders
+python3 Tests/make_site_images.py renders --readme docs/images --site path/to/claeslanng.github.io/assets/img/smartscope
 ```
 
 ### Releases
@@ -142,7 +154,9 @@ Source/
   SettingsPanel.*     themes, layer colors, display options, about
   Themes.h            color themes
   UISettings.h        saved display preferences
-Tests/RenderTest.cpp  offline sync checks and UI renders
+Tests/RenderTest.cpp  offline checks, UI renders, and the screenshot mode (--site)
+Tests/make_site_images.py  turns the renders into README and website images
+Tests/audio/          the kick and bass the screenshots are rendered with
 docs/images/          screenshots used in this README
 ```
 
