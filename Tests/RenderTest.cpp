@@ -167,6 +167,20 @@ static void renderLayers (SmartscopeAudioProcessor& p, FakePlayHead& ph, double 
                 buf.setSample (2, i, (float) kick);
                 buf.setSample (3, i, (float) kick);
             }
+            if (numCh >= 8)
+            {
+                // Clap on beats 2 and 4 (sidechain 2), a short perc hit on the off-beats (sidechain 3)
+                const double tClap = std::fmod ((double) s + spb, 2.0 * spb) / sr;
+                const double clap = tClap < 0.25 ? 0.55 * (juce::Random::getSystemRandom().nextFloat() * 2.0 - 1.0)
+                                                       * std::exp (-tClap * 28.0) : 0.0;
+                const double tPerc = std::fmod ((double) s + 0.5 * spb, spb) / sr;
+                const double perc = 0.45 * std::sin (juce::MathConstants<double>::twoPi * 420.0 * tPerc)
+                                    * std::exp (-tPerc * 70.0);
+                buf.setSample (4, i, (float) clap);
+                buf.setSample (5, i, (float) clap);
+                buf.setSample (6, i, (float) perc);
+                buf.setSample (7, i, (float) perc);
+            }
         }
         p.processBlock (buf, midi);
     }
@@ -340,12 +354,26 @@ int main()
         p2.getUISettings().setProperty (UISettings::colourKey (1), juce::Colour (0xffffd23f).toString(), nullptr);
         p2.getUISettings().setProperty (UISettings::opacityKey (0), 0.6, nullptr);
         sv.refreshForTest();
-        snapshot (*e2, "11_layers_custom_colour");
+        snapshot (*e2, "11_layers_custom_color");
 
         e2->toggleSettings();
         snapshot (*e2, "12_settings");
         e2->setSize (760, 360);
         snapshot (*e2, "13_settings_min");
+        e2->toggleSettings();
+
+        // Big screens: the old 3000 x 1600 cap must be gone, and a 4K window must draw
+        if (auto* c = e2->getConstrainer())
+        {
+            check (c->getMaximumWidth() >= 7680 && c->getMaximumHeight() >= 4320,
+                   "resize limit reaches 7680 x 4320");
+            check (c->getMinimumWidth() <= 240 && c->getMinimumHeight() <= 110,
+                   "resize limit goes down to 240 x 110");
+        }
+        e2->setSize (3840, 2160);
+        check (e2->getWidth() == 3840 && e2->getHeight() == 2160, "editor can be 3840 x 2160");
+        sv.refreshForTest();
+        snapshot (*e2, "14_layers_4k");
 
         e2.reset();
 
@@ -369,6 +397,196 @@ int main()
         snapshot (*e3, "docs_settings");
         e3.reset();
         p2.setPlayHead (nullptr);
+    }
+
+    //--------------------------------------------------------------------------
+    std::cout << "Colors, hex codes, small windows, scope only" << std::endl;
+    {
+        // Hex codes
+        juce::Colour c;
+        check (UISettings::parseHex ("#556BAA", c) && c == juce::Colour (0xff556baa), "hex #556BAA parses");
+        check (UISettings::parseHex ("73848c", c) && c == juce::Colour (0xff73848c), "hex without # and in lower case parses");
+        check (UISettings::parseHex ("#5ab", c) && c == juce::Colour (0xff55aabb), "short hex #5AB parses as #55AABB");
+        check (! UISettings::parseHex ("#12345", c) && ! UISettings::parseHex ("zzzzzz", c) && ! UISettings::parseHex ("", c),
+               "invalid hex is rejected");
+        check (UISettings::toHex (juce::Colour (0xff0a0b0c)) == "#0A0B0C", "colors are shown as #RRGGBB");
+
+        // Random colours: readable on every theme, spread out, clear of Main and Hold
+        juce::Random rng (1234);
+        bool contrastOk = true, spreadOk = true, avoidOk = true;
+        float worstContrast = 99.0f, worstSpread = 1.0f;
+        for (int ti = 0; ti < numThemes; ++ti)
+        {
+            const auto& th = themes[ti];
+            const auto mainC = UISettings::defaultLayerColour (0, th);
+            for (int run = 0; run < 300; ++run)
+            {
+                const auto cs = UISettings::randomSidechainColours (th, rng, mainC, th.hold);
+                for (int i = 0; i < 3; ++i)
+                {
+                    const float cr = UISettings::contrastRatio (cs[(size_t) i], th.scopeBg);
+                    worstContrast = juce::jmin (worstContrast, cr);
+                    contrastOk = contrastOk && cr >= UISettings::minRandomContrast;
+                    for (auto avoidC : { mainC, th.hold })
+                        if (avoidC.getSaturation() > 0.25f)
+                            avoidOk = avoidOk && UISettings::hueDistance (cs[(size_t) i].getHue(), avoidC.getHue())
+                                                     >= UISettings::minAvoidHueGap - 0.005f;
+                    for (int k = i + 1; k < 3; ++k)
+                    {
+                        const float d = UISettings::hueDistance (cs[(size_t) i].getHue(), cs[(size_t) k].getHue());
+                        worstSpread = juce::jmin (worstSpread, d);
+                        spreadOk = spreadOk && d >= UISettings::minRandomHueGap - 0.01f;
+                    }
+                }
+            }
+        }
+        check (contrastOk, "random colors are readable on every theme (worst contrast " + juce::String (worstContrast, 2) + ")");
+        check (spreadOk, "random colors are spread around the wheel (closest pair " + juce::String (worstSpread * 360.0f, 0) + " deg)");
+        check (avoidOk, "random colors keep clear of the Main and Hold colors");
+
+        // A processor with all three sidechains
+        SmartscopeAudioProcessor p3;
+        auto layout = p3.getBusesLayout();
+        for (int b = 1; b <= 3; ++b)
+            layout.inputBuses.getReference (b) = juce::AudioChannelSet::stereo();
+        check (p3.setBusesLayout (layout), "three stereo sidechains accepted");
+        FakePlayHead ph3;
+        p3.setPlayHead (&ph3);
+        p3.setRateAndBufferSizeDetails (sr, 512);
+        p3.prepareToPlay (sr, 512);
+        if (auto* lp = p3.apvts.getParameter (ParamIDs::length))
+            lp->setValueNotifyingHost (lp->convertTo0to1 (3.0f));   // 1/2 bar
+        renderLayers (p3, ph3, sr, 2.5, 60.0);
+
+        bool allOpaque = true;
+        for (int layer = 0; layer < numLayers; ++layer)
+            allOpaque = allOpaque && UISettings::layerOpacity (p3.getUISettings(), layer) == 1.0f;
+        check (allOpaque, "every layer starts at 100% opacity");
+
+        std::unique_ptr<SmartscopeAudioProcessorEditor> e4 (
+            dynamic_cast<SmartscopeAudioProcessorEditor*> (p3.createEditor()));
+        e4->setSize (900, 480);
+        auto& sv = e4->getScopeView();
+        sv.refreshForTest();
+        snapshot (*e4, "15_default_opaque");
+
+        e4->toggleSettings();
+        check (e4->isSettingsOpen(), "Settings opens at 900 x 480");
+        e4->getSettingsPanel()->randomiseSidechainColours();
+        snapshot (*e4, "16_settings_hex_random");
+        e4->toggleSettings();
+        sv.refreshForTest();
+        snapshot (*e4, "17_random_colors");
+
+        e4->toggleSettings();
+        e4->setSize (700, 420);
+        check (! e4->isSettingsOpen(), "Settings closes when the window gets narrower than it");
+        e4->setSize (900, 480);
+        e4->toggleSettings();
+        e4->setSize (900, 340);
+        check (! e4->isSettingsOpen(), "Settings closes when the window gets shorter than it");
+        e4->toggleSettings();
+        check (! e4->isSettingsOpen(), "Settings doesn't open in a window too small for it");
+        e4->setSize (760, 352);
+        e4->toggleSettings();
+        check (e4->isSettingsOpen(), "Settings opens at its minimum, 760 x 352");
+        snapshot (*e4, "18_settings_at_minimum");
+        e4->toggleSettings();
+
+        // Small windows: every visible control inside the window, none overlapping
+        for (auto size : { juce::Point<int> (640, 300), juce::Point<int> (480, 220), juce::Point<int> (340, 160),
+                           juce::Point<int> (240, 110) })
+        {
+            e4->setSize (size.x, size.y);
+            sv.refreshForTest();
+            const juce::String tag = juce::String (size.x) + "x" + juce::String (size.y);
+            bool inside = true, apart = true;
+            juce::Array<juce::Component*> shown;
+            for (auto* ch : e4->getChildren())
+                if (ch->isVisible() && ch != &sv)
+                    shown.add (ch);   // includes JUCE's resize corner, so nothing may sit under it
+            for (auto* a : shown)
+            {
+                inside = inside && e4->getLocalBounds().contains (a->getBounds());
+                for (auto* b : shown)
+                    if (a != b && a->getBounds().intersects (b->getBounds()))
+                        apart = false;
+            }
+            check (inside && apart, tag + ": controls fit and don't overlap (" + juce::String (shown.size()) + " shown)");
+            if (! (inside && apart))
+                for (auto* a : shown)
+                    std::cout << "        '" << a->getName() << "' " << a->getBounds().toString() << std::endl;
+            check (sv.getHeight() >= 60, tag + ": the display keeps at least 60 px of height (" + juce::String (sv.getHeight()) + ")");
+            snapshot (*e4, "19_small_" + tag);
+        }
+
+        // Scope only
+        e4->setSize (900, 480);
+        e4->setScopeOnly (true);
+        sv.refreshForTest();
+        auto countOthers = [&]
+        {
+            int n = 0;
+            for (auto* ch : e4->getChildren())
+                if (ch->isVisible() && ch != &sv && dynamic_cast<juce::ResizableCornerComponent*> (ch) == nullptr)
+                    ++n;
+            return n;
+        };
+        int others = countOthers();
+        check (sv.getBounds() == e4->getLocalBounds() && others == 0,
+               "scope only: the display fills the window, nothing else shows (apart from the resize corner)");
+        snapshot (*e4, "20_scope_only");
+
+        auto src = juce::Desktop::getInstance().getMainMouseSource();
+        const juce::MouseEvent move (src, { 300.0f, 200.0f }, juce::ModifierKeys(), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                     e4.get(), e4.get(), juce::Time::getCurrentTime(), { 300.0f, 200.0f },
+                                     juce::Time::getCurrentTime(), 0, false);
+        e4->mouseMove (move);
+        others = countOthers();
+        check (others == 1, "scope only: moving the mouse shows the way back");
+        snapshot (*e4, "21_scope_only_mouse");
+
+        juce::MemoryBlock state;
+        p3.getStateInformation (state);
+        SmartscopeAudioProcessor p4;
+        p4.setStateInformation (state.getData(), (int) state.getSize());
+        check (UISettings::flag (p4.getUISettings(), UISettings::scopeOnlyKey, false), "scope only is saved with the project");
+
+        e4->setScopeOnly (false);
+        check (sv.getBounds() != e4->getLocalBounds() && e4->getSettingsPanel() == nullptr,
+               "leaving scope only brings the header and footer back");
+        e4.reset();
+        p3.setPlayHead (nullptr);
+    }
+
+    //--------------------------------------------------------------------------
+    std::cout << "Window size when the plugin opens" << std::endl;
+    {
+        SmartscopeAudioProcessor p5;
+        std::unique_ptr<juce::AudioProcessorEditor> e5 (p5.createEditor());
+        check (e5->getWidth() == 760 && e5->getHeight() == 360,
+               "a new instance opens at 760 x 360 (got " + juce::String (e5->getWidth()) + " x " + juce::String (e5->getHeight()) + ")");
+
+        e5->setSize (1234, 567);
+        e5.reset();
+        e5.reset (p5.createEditor());
+        check (e5->getWidth() == 1234 && e5->getHeight() == 567,
+               "reopening the window keeps its size (got " + juce::String (e5->getWidth()) + " x " + juce::String (e5->getHeight()) + ")");
+        e5.reset();
+
+        juce::MemoryBlock state;
+        p5.getStateInformation (state);
+        SmartscopeAudioProcessor p6;
+        p6.setStateInformation (state.getData(), (int) state.getSize());
+        std::unique_ptr<juce::AudioProcessorEditor> e6 (p6.createEditor());
+        check (e6->getWidth() == 1234 && e6->getHeight() == 567,
+               "a saved project reopens at its saved size (got " + juce::String (e6->getWidth()) + " x " + juce::String (e6->getHeight()) + ")");
+        e6.reset();
+
+        SmartscopeAudioProcessor p7;
+        p7.editorWidth = 100000; p7.editorHeight = 1;   // nonsense in a saved project
+        std::unique_ptr<juce::AudioProcessorEditor> e7 (p7.createEditor());
+        check (e7->getWidth() == 7680 && e7->getHeight() == 110, "an out-of-range saved size is clamped to the limits");
     }
 
     std::cout << (failures == 0 ? "ALL CHECKS PASSED" : "SOME CHECKS FAILED") << std::endl;

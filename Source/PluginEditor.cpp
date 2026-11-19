@@ -4,6 +4,8 @@ namespace
 {
     constexpr int headerHeight = 36;
     constexpr int footerHeight = 46;
+    constexpr int minScopeHeightWithFooter = 80;   // below this the footer is hidden
+    constexpr juce::uint32 exitButtonShowMs = 2500; // scope-only: how long the way back stays visible
 
     const char* helpText =
         "Mouse over the display\n"
@@ -12,6 +14,9 @@ namespace
         "Ctrl + wheel: display gain\n"
         "Alt + wheel: window length\n"
         "Drag: pan    Double-click: reset zoom\n"
+        "\n"
+        "The corners button shows only the display. Move the mouse over it to get the way back "
+        "(top-left corner).\n"
         "\n"
         "Red ticks at the top mark where the signal goes above 0 dBFS.";
 }
@@ -52,6 +57,10 @@ void SmartscopeLookAndFeel::setTheme (const Theme& t)
     setColour (juce::TextEditor::backgroundColourId, t.control);
     setColour (juce::TextEditor::textColourId, t.text);
     setColour (juce::TextEditor::outlineColourId, t.outline);
+    setColour (juce::TextEditor::focusedOutlineColourId, t.accent.withAlpha (0.85f));
+    setColour (juce::TextEditor::highlightColourId, t.accent.withAlpha (0.35f));
+    setColour (juce::TextEditor::highlightedTextColourId, t.text);
+    setColour (juce::CaretComponent::caretColourId, t.text);
 }
 
 void SmartscopeLookAndFeel::drawCallOutBoxBackground (juce::CallOutBox&, juce::Graphics& g, const juce::Path& path, juce::Image&)
@@ -200,10 +209,20 @@ SmartscopeAudioProcessorEditor::SmartscopeAudioProcessorEditor (SmartscopeAudioP
     helpButton.setTooltip (helpText);
     addAndMakeVisible (helpButton);
 
-    settingsButton.setTooltip ("Settings: themes, layer colours, display options");
+    settingsButton.setTooltip ("Settings: themes, layer colors, display options");
     settingsButton.setClickingTogglesState (false);
     settingsButton.onClick = [this] { toggleSettings(); };
     addAndMakeVisible (settingsButton);
+
+    scopeOnlyButton.setTooltip ("Scope only: hide the header and controls so only the display shows. "
+                                "Move the mouse over the display to get the button that brings them back.");
+    scopeOnlyButton.onClick = [this] { setScopeOnly (true); };
+    addAndMakeVisible (scopeOnlyButton);
+
+    exitScopeOnly.setTooltip ("Show the header and controls again");
+    exitScopeOnly.onClick = [this] { setScopeOnly (false); };
+    addChildComponent (exitScopeOnly);
+    addMouseListener (this, true);   // to show the way back when the mouse moves in scope-only view
 
     // Length
     for (int i = 0; i < numLengthChoices; ++i)
@@ -249,9 +268,18 @@ SmartscopeAudioProcessorEditor::SmartscopeAudioProcessorEditor (SmartscopeAudioP
     zoomButton.onClick = [this] { scope.resetZoom(); };
     addAndMakeVisible (zoomButton);
 
+    // Small enough to tuck into a corner, big enough to fill an 8K screen or a super-ultrawide
+    // at 100 % display scaling (people detach it and give it a whole monitor). The header and
+    // footer drop less important controls as the window gets smaller.
+    //
+    // Read the saved size first: setResizeLimits() snaps the still 0 x 0 editor to the minimum
+    // size and calls resized(), which would otherwise overwrite the saved size with the minimum.
+    const int startWidth  = juce::jlimit (minWidth,  maxWidth,  proc.editorWidth);
+    const int startHeight = juce::jlimit (minHeight, maxHeight, proc.editorHeight);
     setResizable (true, true);
-    setResizeLimits (760, 360, 3000, 1600);
-    setSize (juce::jlimit (760, 3000, proc.editorWidth), juce::jlimit (360, 1600, proc.editorHeight));
+    setResizeLimits (minWidth, minHeight, maxWidth, maxHeight);
+    setSize (startWidth, startHeight);
+    sizeRestored = true;
 
     applyTheme (proc.themeIndex.load());
 
@@ -281,6 +309,46 @@ void SmartscopeAudioProcessorEditor::applyTheme (int index)
     repaint();
 }
 
+bool SmartscopeAudioProcessorEditor::settingsFit() const
+{
+    return getWidth() >= SettingsPanel::minWidth && getHeight() >= headerHeight + SettingsPanel::minHeight;
+}
+
+bool SmartscopeAudioProcessorEditor::isScopeOnly() const
+{
+    return UISettings::flag (proc.getUISettings(), UISettings::scopeOnlyKey, false);
+}
+
+void SmartscopeAudioProcessorEditor::setScopeOnly (bool shouldBeScopeOnly)
+{
+    proc.getUISettings().setProperty (UISettings::scopeOnlyKey, shouldBeScopeOnly, nullptr);
+    if (shouldBeScopeOnly && settingsPanel != nullptr)
+        toggleSettings();
+    lastMouseMoveMs = 0;   // the way back appears on the next mouse move, not straight away
+    resized();
+    repaint();
+}
+
+void SmartscopeAudioProcessorEditor::mouseMove (const juce::MouseEvent&)
+{
+    lastMouseMoveMs = juce::Time::getMillisecondCounter();
+    updateExitButton();
+}
+
+void SmartscopeAudioProcessorEditor::mouseEnter (const juce::MouseEvent& e)
+{
+    mouseMove (e);
+}
+
+void SmartscopeAudioProcessorEditor::updateExitButton()
+{
+    const bool recentlyMoved = lastMouseMoveMs != 0
+                               && juce::Time::getMillisecondCounter() - lastMouseMoveMs < exitButtonShowMs;
+    const bool show = isScopeOnly() && (recentlyMoved || exitScopeOnly.isMouseOver());
+    if (show != exitScopeOnly.isVisible())
+        exitScopeOnly.setVisible (show);
+}
+
 void SmartscopeAudioProcessorEditor::toggleSettings()
 {
     if (settingsPanel != nullptr)
@@ -289,6 +357,9 @@ void SmartscopeAudioProcessorEditor::toggleSettings()
         settingsButton.setToggleState (false, juce::dontSendNotification);
         return;
     }
+
+    if (! settingsFit() || isScopeOnly())
+        return;
 
     settingsPanel = std::make_unique<SettingsPanel> (proc);
     settingsPanel->onThemeChanged = [this] (int index) { applyTheme (index); };
@@ -348,6 +419,7 @@ void SmartscopeAudioProcessorEditor::timerCallback()
     }
 
     lowpassSlider.setAlpha (lowpassButton.getToggleState() ? 1.0f : 0.55f);
+    updateExitButton();
 
     for (auto& c : chips)
     {
@@ -363,8 +435,9 @@ void SmartscopeAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillAll (t.window);
 
     // Logo, with the maker's name underneath
+    if (! logoArea.isEmpty())
     {
-        auto r = headerArea.reduced (12, 0).withTrimmedTop (4);
+        auto r = logoArea.withTrimmedTop (4);
         auto top = r.removeFromTop (19);
         g.setFont (juce::FontOptions (17.0f, juce::Font::bold));
         const juce::String a = "Smart", b = "scope";
@@ -381,65 +454,176 @@ void SmartscopeAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawText ("CLAES LANNG PLUGINS", r.removeFromTop (11).withWidth (130), juce::Justification::centredLeft);
     }
 
-    g.setFont (juce::FontOptions (12.0f));
-    g.setColour (statusSynced ? t.accent : t.textDim);
-    g.drawText (statusText, statusArea, juce::Justification::centredLeft);
+    if (! statusArea.isEmpty())
+    {
+        g.setFont (juce::FontOptions (12.0f));
+        g.setColour (statusSynced ? t.accent : t.textDim);
+        g.drawText (statusText, statusArea, juce::Justification::centredLeft);
+    }
 
+    g.setFont (juce::FontOptions (12.0f));
     g.setColour (t.textDim);
-    g.drawText ("Length", lengthLabelArea, juce::Justification::centredRight);
-    g.drawText ("Gain", gainLabelArea, juce::Justification::centredRight);
+    if (! lengthLabelArea.isEmpty()) g.drawText ("Length", lengthLabelArea, juce::Justification::centredRight);
+    if (! gainLabelArea.isEmpty())   g.drawText ("Gain", gainLabelArea, juce::Justification::centredRight);
 }
 
 void SmartscopeAudioProcessorEditor::resized()
 {
+    const bool scopeOnly = isScopeOnly();
+
+    // Settings can't be laid out in a small window (or when there is no header to close it from)
+    if (settingsPanel != nullptr && (scopeOnly || ! settingsFit()))
+        toggleSettings();
+    settingsButton.setEnabled (settingsFit());
+    settingsButton.setAlpha (settingsFit() ? 1.0f : 0.4f);
+    settingsButton.setTooltip (settingsFit() ? "Settings: themes, layer colors, display options"
+                                             : "Make the window bigger to open Settings");
+
     auto r = getLocalBounds();
-    headerArea = r.removeFromTop (headerHeight);
-    footerArea = r.removeFromBottom (footerHeight);
+    headerArea = footerArea = statusArea = logoArea = lengthLabelArea = gainLabelArea = {};
 
-    scope.setBounds (r.reduced (8, 0));
-
-    auto h = headerArea.reduced (8, 7);
-    settingsButton.setBounds (h.removeFromRight (24));
-    h.removeFromRight (4);
-    helpButton.setBounds (h.removeFromRight (24));
-    h.removeFromRight (12);
-    for (int layer = numLayers - 1; layer >= 0; --layer)
+    if (scopeOnly)
     {
-        chips[layer]->setBounds (h.removeFromRight (layer == 0 ? 58 : 52));
-        h.removeFromRight (3);
+        scope.setBounds (r);
+        layoutHeader ({});
+        layoutFooter ({});
+        exitScopeOnly.setBounds (3, 1, 38, 18);   // over the empty corner left of the time ruler
+        exitScopeOnly.toFront (false);
+        updateExitButton();
     }
-    h.removeFromLeft (128);
-    statusArea = h.withTrimmedRight (8);
+    else
+    {
+        exitScopeOnly.setVisible (false);
+        headerArea = r.removeFromTop (headerHeight);
+        if (r.getHeight() >= footerHeight + minScopeHeightWithFooter)
+            footerArea = r.removeFromBottom (footerHeight);
+        else
+            r.removeFromBottom (6);
+
+        scope.setBounds (r.reduced (8, 0));
+        layoutHeader (headerArea);
+        layoutFooter (footerArea);
+    }
 
     if (settingsPanel != nullptr)
         settingsPanel->setBounds (getLocalBounds().withTrimmedTop (headerHeight));
 
-    auto f = footerArea.reduced (8, 9);
-    lengthLabelArea = f.removeFromLeft (44);
-    f.removeFromLeft (6);
-    lengthDown.setBounds (f.removeFromLeft (26));
-    f.removeFromLeft (3);
-    lengthBox.setBounds (f.removeFromLeft (78));
-    f.removeFromLeft (3);
-    lengthUp.setBounds (f.removeFromLeft (26));
+    if (sizeRestored)   // not during construction, see the constructor
+    {
+        proc.editorWidth = getWidth();
+        proc.editorHeight = getHeight();
+    }
+}
 
-    f.removeFromLeft (14);
-    gainLabelArea = f.removeFromLeft (32);
-    f.removeFromLeft (6);
-    gainSlider.setBounds (f.removeFromLeft (104));
+void SmartscopeAudioProcessorEditor::layoutHeader (juce::Rectangle<int> area)
+{
+    const bool show = ! area.isEmpty();
+    for (juce::Component* c : { (juce::Component*) &settingsButton, (juce::Component*) &helpButton,
+                                (juce::Component*) &scopeOnlyButton })
+        c->setVisible (show);
+    for (auto& c : chips)
+        c->setVisible (show);
+    if (! show)
+        return;
 
-    f.removeFromLeft (16);
-    lowpassButton.setBounds (f.removeFromLeft (76));
-    f.removeFromLeft (3);
-    lowpassSlider.setBounds (f.removeFromLeft (92));
+    // Right to left: gear, ?, scope only, layer chips. Then the logo and status on the left
+    // if there's room. As the window narrows: the status goes first, then the logo, then the
+    // chips shrink to just their coloured dots, then the ? button goes.
+    auto h = area.reduced (8, 7);
+    constexpr int icon = 24, iconGap = 4, chipGap = 3, logoW = 128, statusMinW = 200;
+    const int fullChipsW = 58 + 3 * 52 + numLayers * chipGap + 9;
+    const int dotChipsW  = numLayers * (24 + chipGap) + 9;
+    const int iconsW     = 3 * icon + 2 * iconGap;
 
-    f.removeFromLeft (12);
-    holdButton.setBounds (f.removeFromLeft (56));
+    const bool showHelp  = h.getWidth() >= iconsW + dotChipsW;
+    const bool fullChips = h.getWidth() >= iconsW + fullChipsW;
+    const bool showLogo  = fullChips && h.getWidth() >= iconsW + fullChipsW + logoW;
+    const bool showStat  = showLogo && h.getWidth() >= iconsW + fullChipsW + logoW + statusMinW;
 
-    zoomButton.setBounds (f.removeFromRight (92));
+    settingsButton.setBounds (h.removeFromRight (icon));
+    h.removeFromRight (iconGap);
+    helpButton.setVisible (showHelp);
+    if (showHelp)
+    {
+        helpButton.setBounds (h.removeFromRight (icon));
+        h.removeFromRight (iconGap);
+    }
+    scopeOnlyButton.setBounds (h.removeFromRight (icon));
+    h.removeFromRight (9);
 
-    proc.editorWidth = getWidth();
-    proc.editorHeight = getHeight();
+    for (int layer = numLayers - 1; layer >= 0; --layer)
+    {
+        chips[layer]->setBounds (h.removeFromRight (fullChips ? (layer == 0 ? 58 : 52) : 24));
+        h.removeFromRight (chipGap);
+    }
+
+    if (showLogo)
+        logoArea = h.removeFromLeft (logoW).withX (area.getX() + 12).withY (area.getY()).withHeight (area.getHeight());
+    if (showStat)
+        statusArea = h.withTrimmedRight (8);
+}
+
+void SmartscopeAudioProcessorEditor::layoutFooter (juce::Rectangle<int> area)
+{
+    // Each control has a priority: when the footer is too narrow, the highest numbers go first.
+    struct Item { juce::Component* comp; juce::Rectangle<int>* label; int width; int group; int priority; };
+    Item items[] = {
+        { nullptr,        &lengthLabelArea, 44, 0, 6 },
+        { &lengthDown,    nullptr,          26, 0, 2 },
+        { &lengthBox,     nullptr,          78, 0, 0 },
+        { &lengthUp,      nullptr,          26, 0, 2 },
+        { nullptr,        &gainLabelArea,   32, 1, 6 },
+        { &gainSlider,    nullptr,         104, 1, 3 },
+        { &lowpassButton, nullptr,          76, 2, 1 },
+        { &lowpassSlider, nullptr,          92, 2, 4 },
+        { &holdButton,    nullptr,          56, 3, 0 },
+        { &zoomButton,    nullptr,          92, 4, 5 },   // sits on the right
+    };
+    constexpr int innerGap = 4, groupGap = 14, zoomGroup = 4;
+
+    auto f = area.reduced (8, 9).withTrimmedRight (12);   // keep clear of the resize corner
+
+    auto widthAt = [&] (int level)
+    {
+        int w = 0, lastGroup = -1;
+        for (auto& it : items)
+        {
+            if (it.priority > level) continue;
+            if (lastGroup >= 0) w += (it.group == lastGroup ? innerGap : groupGap);
+            w += it.width;
+            lastGroup = it.group;
+        }
+        return w;
+    };
+
+    int level = area.isEmpty() ? -1 : 6;
+    while (level >= 0 && widthAt (level) > f.getWidth())
+        --level;
+
+    int lastGroup = -1;
+    for (auto& it : items)
+    {
+        const bool show = it.priority <= level;
+        if (it.comp != nullptr)
+            it.comp->setVisible (show);
+        if (! show)
+            continue;
+
+        juce::Rectangle<int> slot;
+        if (it.group == zoomGroup)
+        {
+            slot = f.removeFromRight (it.width);
+        }
+        else
+        {
+            if (lastGroup >= 0) f.removeFromLeft (it.group == lastGroup ? innerGap : groupGap);
+            slot = f.removeFromLeft (it.width);
+            lastGroup = it.group;
+        }
+
+        if (it.comp != nullptr) it.comp->setBounds (slot);
+        else                    *it.label = slot;
+    }
 }
 
 //==============================================================================
@@ -460,10 +644,14 @@ void LayerChip::paintButton (juce::Graphics& g, bool isOver, bool)
     g.drawRoundedRectangle (r, 3.0f, 1.0f);
 
     const float alpha = connected ? (visible ? 1.0f : 0.35f) : 0.25f;
-    auto dot = juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ r.getX() + 11.0f, r.getCentreY() });
+    const bool dotOnly = getWidth() < 40;   // narrow window: just the coloured dot
+    auto dot = juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ dotOnly ? r.getCentreX() : r.getX() + 11.0f, r.getCentreY() });
     g.setColour (colour.withMultipliedAlpha (alpha));
     if (visible) g.fillEllipse (dot);
     else         g.drawEllipse (dot, 1.2f);
+
+    if (dotOnly)
+        return;
 
     g.setColour (t.text.withMultipliedAlpha (connected ? (visible ? 1.0f : 0.5f) : 0.4f));
     g.setFont (juce::FontOptions (12.0f));
@@ -485,7 +673,7 @@ void LayerChip::updateTooltip()
     if (layer == 0)
         tip = "Main input (this track). Click to show/hide.";
     else if (proc.isLayerConnected (layer))
-        tip = juce::String (UISettings::layerLongName (layer)) + ". Click to show/hide. Colours are in Settings.";
+        tip = juce::String (UISettings::layerLongName (layer)) + ". Click to show/hide. Colors are in Settings.";
     else
         tip = juce::String (UISettings::layerLongName (layer)) + ": nothing connected. Send a mixer track to Smartscope's "
               "sidechain input " + juce::String (layer) + " to see it here.";
@@ -530,6 +718,28 @@ void IconButton::paintButton (juce::Graphics& g, bool isOver, bool isDown)
         gear.addEllipse (c.x - 2.4f, c.y - 2.4f, 4.8f, 4.8f);
         gear.setUsingNonZeroWinding (false);
         g.fillPath (gear);
+    }
+    else if (icon == Icon::expand || icon == Icon::collapse)
+    {
+        // Four corner brackets: pointing out = scope only, pointing in = back to normal
+        const float side = juce::jmin (r.getWidth(), r.getHeight());
+        const float half = side * 0.5f - juce::jmax (3.0f, side * 0.2f);
+        const bool out = icon == Icon::expand;
+        const float arm = half * (out ? 0.55f : 0.45f);
+        juce::Path p;
+        for (float sx : { -1.0f, 1.0f })
+            for (float sy : { -1.0f, 1.0f })
+            {
+                // Corner point of the bracket, and the direction its arms run
+                const float cx = c.x + sx * (out ? half : half - arm);
+                const float cy = c.y + sy * (out ? half : half - arm);
+                const float dx = out ? -sx * arm : sx * arm;
+                const float dy = out ? -sy * arm : sy * arm;
+                p.startNewSubPath (cx + dx, cy);
+                p.lineTo (cx, cy);
+                p.lineTo (cx, cy + dy);
+            }
+        g.strokePath (p, juce::PathStrokeType (1.5f, juce::PathStrokeType::mitered, juce::PathStrokeType::square));
     }
     else
     {

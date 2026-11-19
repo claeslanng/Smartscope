@@ -97,8 +97,10 @@ public:
     bool   isSynced() const noexcept               { return synced.load(); }
     bool   isClamped() const noexcept              { return clamped.load(); }
 
-    // Editor size, saved with the project
-    int editorWidth = 900, editorHeight = 480;
+    // Editor size, saved with the project. New instances open at 760 x 360, the size
+    // every version up to 1.1 opened at.
+    static constexpr int defaultEditorWidth = 760, defaultEditorHeight = 360;
+    int editorWidth = defaultEditorWidth, editorHeight = defaultEditorHeight;
 
     // Colour theme, saved with the project
     std::atomic<int> themeIndex { 0 };

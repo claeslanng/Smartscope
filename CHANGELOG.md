@@ -1,13 +1,29 @@
 # Changelog
 
+## [1.2.0] - 2026-11-19
+
+### Added
+- **Scope only:** a new header button hides the header and controls so only the display is left. Move the mouse over it to get the button that brings them back. Saved with the project.
+- **Hex codes:** every color in Settings has a #RRGGBB box next to its swatch. The short #RGB form works too.
+- **Random colors:** a dice button in Settings gives sidechains 1–3 new colors that are easy to see on the current theme and easy to tell apart.
+
+### Changed
+- The window now resizes up to 7680 × 4320 (it stopped at 3000 × 1600), so it can fill a 4K or 8K screen or a super-ultrawide, even at 100% display scaling.
+- It also goes much smaller, down to 240 × 110 (it stopped at 760 × 360). The header and footer drop less-used controls as it shrinks, and Settings closes when the window gets smaller than it.
+- Every layer now starts at 100% opacity (sidechain layers used to start at 85%). Projects where you changed the opacity keep it.
+- The zoom readout no longer sits under the resize corner.
+
+### Fixed
+- The window now reopens at the size you left it, in the same session and in saved projects. It used to open at 760 × 360 every time. New instances still start at 760 × 360.
+
 ## [1.1.0] - 2026-11-18
 
 ### Added
-- **Sidechain layers:** three optional sidechain inputs, each drawn as its own coloured layer with the same tempo sync as the main input.
+- **Sidechain layers:** three optional sidechain inputs, each drawn as its own colored layer with the same tempo sync as the main input.
 - **Layer chips** in the header to show or hide each layer. They also show which inputs are connected.
 - **Settings panel** (gear button):
   - Theme.
-  - Colour picker and opacity for every layer and for the Hold trace.
+  - Color picker and opacity for every layer and for the Hold trace.
   - Display options: hover readout, play cursor, 0 dB markers, main layer on top.
   - An About section.
 - **Themes:** Graphite, Midnight, Phosphor, Daylight.
