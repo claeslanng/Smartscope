@@ -10,6 +10,7 @@
   <a href="https://github.com/claeslanng/Smartscope/actions/workflows/build-windows.yml"><img alt="Build" src="https://github.com/claeslanng/Smartscope/actions/workflows/build-windows.yml/badge.svg"></a>
   <img alt="Format" src="https://img.shields.io/badge/format-VST3-3fb6ff">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-555">
+  <img alt="License" src="https://img.shields.io/badge/license-AGPLv3-555">
 </p>
 
 <p align="center">
@@ -132,6 +133,12 @@ docs/images/          screenshots used in this README
 
 See [CHANGELOG.md](CHANGELOG.md).
 
+## License
+
+Smartscope is free software, licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPLv3).
+You may use, study, share and modify it. If you distribute a modified version, you must share its source
+under the same licence. Built with [JUCE](https://juce.com), used under its AGPLv3 licence.
+
 ---
 
-<p align="center"><sub>Made by <b>Claes Lanng Plugins</b> · built with <a href="https://juce.com">JUCE</a></sub></p>
+<p align="center"><sub>Made by <b>Claes Lanng Plugins</b> · <a href="https://claeslanng.shop">claeslanng.shop</a></sub></p>
