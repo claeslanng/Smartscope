@@ -144,7 +144,7 @@ python3 Tests/make_site_images.py /tmp/renders --readme docs/images \
 - **Website** gets `main.webp`, `zoom.webp`, `theme-*.webp` (1140 px), `settings.webp`
   (shown at half its pixel size), `main-share.jpg` (1200 px) and `drag-loop.mp4` + poster
   (1280 × 440). The site's captions name what's in the images (layer colors per theme,
-  Zoom x68 / 14 ms, x27 / two bars): change them if the renders change.
+  Zoom x68 / 14 ms, x5 / two bars / the hand dragging): change them if the renders change.
 
 ## Selling points the owner wants promoted
 
