@@ -12,6 +12,8 @@ The product page is https://claeslanng.shop/smartscope/ (repo `claeslanng/claesl
 - **One trace: left + right averaged.** No L/R/Mid/Side/Split views.
 - **No freeze, no MIDI or audio triggering, no preset browser.** The ShaperBox-style
   extras were left out on purpose.
+- **No time measurement tool** (Ctrl+drag between two points). The owner turned it
+  down.
 - **Tempo sync** to the host's tempo and song position (PPQ), aligned to bar lines.
   Lengths: 1/16, 1/8, 1/4, 1/2, 1 bar, 2 bars, 4 bars. When the transport is stopped it
   free-runs at the host tempo while there's signal, and keeps the last picture when the
@@ -82,8 +84,16 @@ release, update the version on the product page in `claeslanng/claeslanng.github
 
 - **v2: inter-instance overlay.** Show another instance's signal (e.g. the kick track)
   behind this one without sidechain routing, like Scyllascope's overlays.
-- **Time measurement.** Ctrl+drag to read the time between two points in ms.
 - **Real FL Studio screenshots** or a short screen recording for the README and the
   product page (the current images are synthetic test renders).
-- **Unverified in FL Studio:** whether all three sidechain inputs show up in FL's
-  Processing → Connections, and whether the status ever reads FREE while playing.
+
+## Verified in FL Studio (2026-11-19, v1.1.0)
+
+- All three sidechain inputs show up in FL's Processing → Connections and draw as
+  layers. Input and Output on "---" means the track's own audio (the main trace).
+- The status reads SYNCED while playing, with the right BPM and window length.
+- An empty main trace (Peak -inf) just means the track is silent. It's not a bug.
+- To watch: the owner has **Allow smart disable** on. With FL's global Smart Disable,
+  FL may stop calling the plugin when its own track is silent, which would freeze the
+  sidechain layers too. Not seen yet; it's the first thing to check if a layer stops
+  updating while its source plays.
