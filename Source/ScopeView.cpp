@@ -489,7 +489,8 @@ void ScopeView::paint (juce::Graphics& g)
     if (UISettings::flag (ui, UISettings::showClipKey, true))
         drawClipMarkers (g, trace);
 
-    // Peak readout (top right of the trace area)
+    // Peak readout (top right of the trace area), when there's room for it
+    if (trace.getHeight() >= 90.0f && trace.getWidth() >= 200.0f)
     {
         const bool clipping = windowPeak > 1.0f;
         const float peakDb = juce::Decibels::gainToDecibels (windowPeak, -100.0f);

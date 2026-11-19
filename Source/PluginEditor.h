@@ -57,11 +57,11 @@ private:
     int layer;
 };
 
-/** Small icon buttons (gear / question mark) drawn as vector shapes. */
+/** Small icon buttons (gear / question mark / scope-only in and out) drawn as vector shapes. */
 class IconButton : public juce::Button
 {
 public:
-    enum class Icon { gear, help };
+    enum class Icon { gear, help, expand, collapse };
     IconButton (Icon i) : juce::Button ("icon"), icon (i) {}
     void paintButton (juce::Graphics&, bool isOver, bool isDown) override;
 
@@ -83,6 +83,19 @@ public:
     ScopeView& getScopeView() noexcept { return scope; }
     void applyTheme (int index);
     void toggleSettings();
+    bool isSettingsOpen() const noexcept         { return settingsPanel != nullptr; }
+    SettingsPanel* getSettingsPanel() noexcept   { return settingsPanel.get(); }
+
+    /** Scope-only view: hides the header and footer so only the oscilloscope shows.
+        Saved with the project. */
+    void setScopeOnly (bool shouldBeScopeOnly);
+    bool isScopeOnly() const;
+
+    /** Smallest and largest window sizes. */
+    static constexpr int minWidth = 240, minHeight = 110, maxWidth = 7680, maxHeight = 4320;
+
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override;
 
 private:
     SmartscopeAudioProcessor& proc;
@@ -91,8 +104,11 @@ private:
 
     ScopeView scope;
 
-    IconButton settingsButton { IconButton::Icon::gear };
-    IconButton helpButton     { IconButton::Icon::help };
+    IconButton settingsButton  { IconButton::Icon::gear };
+    IconButton helpButton      { IconButton::Icon::help };
+    IconButton scopeOnlyButton { IconButton::Icon::expand };
+    IconButton exitScopeOnly   { IconButton::Icon::collapse };   // floats over the scope in scope-only view
+    juce::uint32 lastMouseMoveMs = 0;
     std::unique_ptr<LayerChip> chips[numLayers];
     std::unique_ptr<SettingsPanel> settingsPanel;
 
@@ -115,10 +131,14 @@ private:
     std::unique_ptr<SliderAttachment> gainAttachment, lowpassHzAttachment;
     std::unique_ptr<ButtonAttachment> lowpassAttachment;
 
-    juce::Rectangle<int> headerArea, footerArea, statusArea;
+    juce::Rectangle<int> headerArea, footerArea, statusArea, logoArea;
     juce::Rectangle<int> lengthLabelArea, gainLabelArea;
 
     void timerCallback() override;
+    void layoutHeader (juce::Rectangle<int>);
+    void layoutFooter (juce::Rectangle<int>);
+    void updateExitButton();
+    bool settingsFit() const;
     void updateZoomText();
     void stepLength (int delta);
 

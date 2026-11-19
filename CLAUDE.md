@@ -27,15 +27,29 @@ The product page is https://claeslanng.shop/smartscope/ (repo `claeslanng/claesl
 - **Display-only low-pass** (zero-phase, run forwards and backwards), which also redraws
   while stopped. It never touches the audio.
 - **Hold:** a snapshot drawn as a reference trace.
-- **Three optional stereo sidechain inputs**, drawn as coloured layers above the main
+- **Three optional stereo sidechain inputs**, drawn as colored layers above the main
   trace (an option puts the main trace on top). Header chips show and hide them.
 - **Settings panel (gear button):** theme (Graphite, Midnight, Phosphor, Daylight), a
-  colour and opacity per layer and for Hold, display toggles, and About. Everything is
-  saved in the project (the `UI` ValueTree child; the theme index is a state property).
+  color (swatch + picker, plus a #RRGGBB hex box) and opacity per layer and for Hold,
+  display toggles, and About. Everything is saved in the project (the `UI` ValueTree
+  child; the theme index is a state property). Needs at least 760 × 352: the editor closes
+  it below that and grays out the gear.
+- **Every layer defaults to 100% opacity** (`UISettings::defaultOpacity`).
+- **Random colors (dice button in Settings), like FL Studio's color dice:** sidechains
+  1-3 only, never Main. Hues about a third of the wheel apart (at least 72°), saturated
+  but not neon, contrast ≥ 3:1 against the theme's scope background, and clear of the
+  Main and Hold hues. `UISettings::randomSidechainColours`; RenderTest checks the rules.
+- **Scope only (corners button in the header):** hides header and footer, the scope fills
+  the window. A small button in the top-left corner (over the empty bit left of the ruler)
+  appears for 2.5 s after the mouse moves and brings everything back. Saved in the
+  project (`scopeOnly`). No keyboard shortcut: the scope deliberately never takes keyboard
+  focus, so FL keeps its keys.
 - **Branding:** "CLAES LANNG PLUGINS" under the logo, in About, and as COMPANY_NAME.
   Plugin codes: manufacturer `Clng`, plugin `Smsc`. Don't change them, or saved
   projects won't find the plugin.
 - **The plugin never changes the audio** (pass-through, zero latency).
+- **US spelling in anything people read** ("color", "colored", "gray"): UI text, tooltips,
+  README, changelog, product page. Code identifiers keep JUCE's `Colour`.
 
 ## Code map
 
@@ -43,9 +57,9 @@ The product page is https://claeslanng.shop/smartscope/ (repo `claeslanng/claesl
 Source/PluginProcessor.*  capture: tempo sync, window buffer per layer (main + 3 sidechains)
 Source/ScopeView.*        drawing, grid, zoom/scroll, display low-pass, hold, clip markers
 Source/PluginEditor.*     window, header (logo, status, layer chips, ?, gear), footer, look-and-feel
-Source/SettingsPanel.*    settings overlay and colour pickers
-Source/Themes.h           colour themes
-Source/UISettings.h       saved display preferences (colours, opacity, visibility, toggles)
+Source/SettingsPanel.*    settings overlay and color pickers
+Source/Themes.h           color themes
+Source/UISettings.h       saved display preferences (colors, opacity, visibility, toggles)
 Tests/RenderTest.cpp      offline sync checks with a fake host + PNG renders of the UI
 ```
 
@@ -91,10 +105,15 @@ release, update the version on the product page in `claeslanng/claeslanng.github
 
 ## Selling points the owner wants promoted
 
-- **Any size** (760 × 360 up to 7680 × 4320, `setResizeLimits` in PluginEditor.cpp):
+- **Any size** (240 × 110 up to 7680 × 4320, `minWidth`/`maxWidth` etc. in PluginEditor.h):
   detach it in FL (the menu item is called **Detached**, under the arrow at the top left
-  of the plugin window) and give it a whole second monitor, TV or tablet. Keep the README
-  "Make it big" section and the product page's matching section in step with the limits.
+  of the plugin window) and give it a whole second monitor, TV or tablet, or shrink it to
+  a strip. Pairs with **Scope only**. Keep the README "Make it big" section and the
+  product page's matching section in step with the limits.
+- **Small-window layout:** header drops status, then logo, then chips become dots, then
+  `?`. Footer controls have priorities in `layoutFooter` (labels go first, then zoom,
+  low-pass slider, gain, < >, low-pass; length box and Hold stay). The footer hides when
+  the scope would get under 80 px. RenderTest checks nothing overlaps at 640/480/340/240.
 
 ## Verified in FL Studio (2026-11-19, v1.1.0)
 
